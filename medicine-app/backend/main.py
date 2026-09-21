@@ -28,7 +28,7 @@ def send_alert_email(patient_name: str, medicine_name: str):
     receiver = sender  # Sends directly to your configured email
 
     if not sender or not password:
-        print("⚠️ Email credentials missing in .env! Skipping email dispatch.")
+        print("⚠️ Email credentials missing in Render Environment Variables! Skipping email dispatch.")
         return
 
     msg = MIMEMultipart()
@@ -50,6 +50,8 @@ def send_alert_email(patient_name: str, medicine_name: str):
         server.send_message(msg)
         server.quit()
         print(f"📧 Alert email successfully sent for {patient_name} ({medicine_name})!")
+    except smtplib.SMTPAuthenticationError:
+        print("❌ SMTP Auth Error: Google blocked the login. You MUST use a 16-character App Password, not your normal Gmail password.")
     except Exception as e:
         print(f"❌ Failed to send email alert: {e}")
 
@@ -75,6 +77,10 @@ async def check_missed_doses():
             }
         )
         
+        print(f"Total missed doses found in DB: {len(late_medicines)}")
+        if not late_medicines:
+            print(f"Search cutoff time was (UTC): {cutoff_time}")
+        
         for med in late_medicines:
             patient_name = med.familyMember.name if med.familyMember else "Unknown Patient"
             print(f"🚨 ESCALATION ALERT: {patient_name} missed scheduled dose for {med.name}!")
@@ -96,7 +102,7 @@ app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "fallba
 
 app.add_middleware(
     CORSMiddleware,
-   allow_origins=["http://localhost:5173", "https://vitals-sand.vercel.app"],
+    allow_origins=["http://localhost:5173", "https://vitals-sand.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -144,11 +150,10 @@ async def shutdown():
 # --- AUTH ROUTES ---
 @app.get("/auth/login")
 async def login(request: Request):
-    redirect_uri = "https://vitals-bget.onrender.com/auth/callback"
     return await oauth.google.authorize_redirect(
-    request, 
-    redirect_uri="https://vitals-bget.onrender.com/auth/callback"
-)
+        request, 
+        redirect_uri="https://vitals-bget.onrender.com/auth/callback"
+    )
 
 @app.get("/auth/callback")
 async def auth_callback(request: Request):
@@ -205,12 +210,13 @@ async def add_medicine(member_id: str, medicine: MedicineCreate):
             "name": medicine.name,
             "stockAvailable": medicine.totalStock,
             "intervalHours": medicine.intervalHours,
-            "dosesPerDay": medicine.dosesPerDay, # NEW: Save to DB
+            "dosesPerDay": medicine.dosesPerDay,
             "familyMemberId": member_id,
             "nextDoseTime": datetime.now(timezone.utc)
         }
     )
     return new_med
+
 @app.put("/medicine/{medicine_id}/take")
 async def take_dose(medicine_id: str):
     medicine = await db.medicine.find_unique(where={"id": medicine_id})
