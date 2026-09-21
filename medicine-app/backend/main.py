@@ -145,7 +145,10 @@ async def shutdown():
 @app.get("/auth/login")
 async def login(request: Request):
     redirect_uri = "https://vitals-bget.onrender.com/auth/callback"
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    return await oauth.google.authorize_redirect(
+    request, 
+    redirect_uri="https://vitals-bget.onrender.com/auth/callback"
+)
 
 @app.get("/auth/callback")
 async def auth_callback(request: Request):
