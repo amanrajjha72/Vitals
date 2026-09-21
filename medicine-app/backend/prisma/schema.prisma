@@ -1,0 +1,57 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider             = "prisma-client-py"
+  recursive_type_depth = 5
+}
+
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  familyMembers FamilyMember[]
+}
+
+model FamilyMember {
+  id        String          @id @default(uuid())
+  name      String
+  userId    String
+  user      User            @relation(fields: [userId], references: [id])
+  medicines Medicine[]
+  logs      MedicineLog[]
+  reports   MedicalReport[]
+}
+
+model Medicine {
+  id             String        @id @default(uuid())
+  name           String
+  stockAvailable Int
+  nextDoseTime   DateTime?
+  intervalHours  Int
+  dosesPerDay    Int           // NEW: Stores number of doses per day
+  familyMemberId String
+  familyMember   FamilyMember  @relation(fields: [familyMemberId], references: [id])
+  MedicineLog    MedicineLog[]
+}
+model MedicineLog {
+  id             String       @id @default(uuid())
+  doseAmount     Int
+  scheduledTime  DateTime
+  status         String // "PENDING", "TAKEN"
+  medicineId     String
+  medicine       Medicine     @relation(fields: [medicineId], references: [id])
+  familyMemberId String
+  familyMember   FamilyMember @relation(fields: [familyMemberId], references: [id])
+}
+
+model MedicalReport {
+  id             String       @id @default(uuid())
+  fileName       String
+  fileUrl        String
+  uploadedAt     DateTime     @default(now())
+  familyMemberId String
+  familyMember   FamilyMember @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+}

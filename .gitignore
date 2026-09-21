@@ -1,0 +1,16 @@
+# Node/React
+node_modules/
+dist/
+
+# Python/FastAPI
+venv/
+__pycache__/
+*.pyc
+
+# Security & Passwords
+.env
+.env.local
+
+# Database files
+*.db
+*.db-journal
