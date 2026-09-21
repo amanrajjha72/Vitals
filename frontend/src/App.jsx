@@ -28,7 +28,7 @@ function App() {
 
   const fetchFamilyData = () => {
     if (!userId) return 
-    fetch(`http://127.0.0.1:8000/family/?user_id=${userId}`)
+    fetch(`https://vitals-bget.onrender.com/family/?user_id=${userId}`)
       .then(response => response.json())
       .then(data => {
         const familyArray = Array.isArray(data) ? data : (data.family || [])
@@ -45,7 +45,7 @@ function App() {
     e.preventDefault()
     if (!newPatientName.trim()) return
     try {
-      const response = await fetch("http://127.0.0.1:8000/family/", {
+      const response = await fetch("https://vitals-bget.onrender.com/family/", {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newPatientName, userId: userId })
@@ -71,7 +71,7 @@ function App() {
     if (!medData || !medData.name || !medData.stock || !medData.intervalHours || !medData.dosesPerDay) return
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/family/${memberId}/medicine`, {
+      const response = await fetch(`https://vitals-bget.onrender.com/family/${memberId}/medicine`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -94,7 +94,7 @@ function App() {
       return
     }
     try {
-      const response = await fetch(`http://127.0.0.1:8000/medicine/${medicineId}/take`, {
+      const response = await fetch(`https://vitals-bget.onrender.com/medicine/${medicineId}/take`, {
         method: 'PUT',
       })
       if (response.ok) fetchFamilyData() 
@@ -108,7 +108,7 @@ function App() {
     formData.append("file", file)
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/family/${memberId}/report`, {
+      const response = await fetch(`https://vitals-bget.onrender.com/family/${memberId}/report`, {
         method: 'POST',
         body: formData,
       })
@@ -310,7 +310,7 @@ function App() {
                   {member.reports && member.reports.length > 0 && (
                     <div className="flex flex-col gap-2">
                       {member.reports.map(report => (
-                        <a key={report.id} href={`http://127.0.0.1:8000/${report.fileUrl}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-zinc-300 bg-zinc-950/80 border border-zinc-800/80 p-3 rounded-xl hover:bg-indigo-500/10 hover:border-indigo-500/30 hover:text-indigo-300 transition-all text-sm group/link">
+                        <a key={report.id} href={`https://vitals-bget.onrender.com/${report.fileUrl}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-zinc-300 bg-zinc-950/80 border border-zinc-800/80 p-3 rounded-xl hover:bg-indigo-500/10 hover:border-indigo-500/30 hover:text-indigo-300 transition-all text-sm group/link">
                           <div className="p-1.5 bg-zinc-800 group-hover/link:bg-indigo-500/20 rounded-lg text-zinc-400 group-hover/link:text-indigo-400 transition-colors">
                             <Paperclip size={14} /> 
                           </div>
