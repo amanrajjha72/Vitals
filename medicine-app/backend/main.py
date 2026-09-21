@@ -144,7 +144,7 @@ async def shutdown():
 # --- AUTH ROUTES ---
 @app.get("/auth/login")
 async def login(request: Request):
-    redirect_uri = "http://localhost:8000/auth/callback"
+    redirect_uri = "https://vitals-bget.onrender.com/auth/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @app.get("/auth/callback")
@@ -166,7 +166,7 @@ async def auth_callback(request: Request):
                 }
             )
             
-        return RedirectResponse(url=f"http://localhost:5173?userId={user.id}")
+        return RedirectResponse(url=f"https://vitals-sand.vercel.app?userId={user.id}")
         
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
