@@ -138,7 +138,7 @@ function App() {
           </div>
           <h1 className="text-5xl font-extrabold tracking-tight bg-gradient-to-br from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent mb-4">Vitals Tracker</h1>
           <p className="text-zinc-400 max-w-md text-lg mb-10 leading-relaxed">Secure, automated prescription management with real-time escalation alerts.</p>
-          <a href="http://localhost:8000/auth/login" className="inline-flex items-center gap-3 bg-zinc-100 text-zinc-900 hover:bg-white transition-all px-6 py-3 rounded-xl text-base font-semibold shadow-lg shadow-white/5 hover:scale-105 active:scale-95">
+          <a href="https://vitals-bget.onrender.com/auth/login" className="inline-flex items-center gap-3 bg-zinc-100 text-zinc-900 hover:bg-white transition-all px-6 py-3 rounded-xl text-base font-semibold shadow-lg shadow-white/5 hover:scale-105 active:scale-95">
             <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google" className="w-5 h-5" />
             Continue with Google
           </a>
