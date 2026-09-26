@@ -101,7 +101,7 @@ async def check_missed_doses():
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "fallback-secret-key"))
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://vitals-sand.vercel.app"],
+    allow_origins=["http://localhost:8080", "https://vitals-sand.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
