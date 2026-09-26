@@ -44,6 +44,16 @@ class CustomLogin(BaseModel):
     username: str
     password: str
 
+class FamilyMemberCreate(BaseModel):
+    userId: str
+    name: str
+
+class MedicineCreate(BaseModel):
+    familyMemberId: str
+    name: str
+    stockAvailable: int
+    intervalHours: int
+
 # --- EMAIL NOTIFICATION SERVICE ---
 def send_alert_email(patient_name: str, medicine_name: str):
     sender = os.getenv("EMAIL_SENDER")
@@ -173,6 +183,40 @@ async def custom_login(data: CustomLogin):
         raise HTTPException(status_code=401, detail="Invalid username or password")
         
     return {"message": "Login successful", "userId": user.id}
+
+# --- DASHBOARD & FAMILY ROUTES ---
+@app.get("/user/{user_id}/family")
+async def get_dashboard_data(user_id: str):
+    """Fetches all family members and their tracked medicines for the dashboard."""
+    family_members = await db.familymember.find_many(
+        where={"userId": user_id},
+        include={"medicines": True}
+    )
+    return family_members
+
+@app.post("/family")
+async def add_family_member(data: FamilyMemberCreate):
+    """Creates a new family member linked to the user."""
+    member = await db.familymember.create(
+        data={
+            "name": data.name,
+            "userId": data.userId
+        }
+    )
+    return member
+
+@app.post("/medicine")
+async def add_medicine(data: MedicineCreate):
+    """Adds a new medicine to a specific family member."""
+    medicine = await db.medicine.create(
+        data={
+            "name": data.name,
+            "stockAvailable": data.stockAvailable,
+            "intervalHours": data.intervalHours,
+            "familyMemberId": data.familyMemberId
+        }
+    )
+    return medicine
 
 # --- MEDICINE ROUTES ---
 @app.put("/medicine/{medicine_id}/take")
