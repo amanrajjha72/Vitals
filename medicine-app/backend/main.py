@@ -207,17 +207,36 @@ async def add_family_member(data: FamilyMemberCreate):
 
 @app.post("/medicine")
 async def add_medicine(data: MedicineCreate):
-    """Adds a new medicine to a specific family member."""
+    """Adds a new medicine, or updates stock/intervals if it already exists."""
     
-    # Calculate how many doses are taken per day to satisfy the Prisma schema requirement
-    calculated_doses = 24 // data.intervalHours if data.intervalHours > 0 else 1
+    # Fetch all medicines for this specific family member
+    existing_medicines = await db.medicine.find_many(
+        where={"familyMemberId": data.familyMemberId}
+    )
+    
+    # Case-insensitive search for an exact match (e.g., "Metformin" == "metformin")
+    target_name = data.name.strip().lower()
+    existing_medicine = next((m for m in existing_medicines if m.name.lower() == target_name), None)
 
+    if existing_medicine:
+        # If it exists, combine the new stock with the old stock
+        updated_medicine = await db.medicine.update(
+            where={"id": existing_medicine.id},
+            data={
+                "stockAvailable": existing_medicine.stockAvailable + data.stockAvailable,
+                "intervalHours": data.intervalHours  # Applies the newest interval schedule
+            }
+        )
+        return updated_medicine
+    
+    # If it does not exist, create it normally
+    calculated_doses = 24 // data.intervalHours if data.intervalHours > 0 else 1
     medicine = await db.medicine.create(
         data={
-            "name": data.name,
+            "name": data.name.strip(),
             "stockAvailable": data.stockAvailable,
             "intervalHours": data.intervalHours,
-            "dosesPerDay": calculated_doses,  # This new field fixes the Prisma crash
+            "dosesPerDay": calculated_doses,
             "familyMemberId": data.familyMemberId
         }
     )
@@ -226,11 +245,27 @@ async def add_medicine(data: MedicineCreate):
 # --- MEDICINE ROUTES ---
 @app.put("/medicine/{medicine_id}/take")
 async def take_dose(medicine_id: str):
+    """Logs a dose, strictly preventing doses taken before the nextDoseTime."""
     medicine = await db.medicine.find_unique(where={"id": medicine_id})
-    if not medicine or medicine.stockAvailable <= 0:
+    
+    if not medicine:
+        raise HTTPException(status_code=404, detail="Medicine not found")
+    if medicine.stockAvailable <= 0:
         raise HTTPException(status_code=400, detail="Out of stock")
+
+    now = datetime.now(timezone.utc)
+
+    # Strictly enforce the time delay
+    if medicine.nextDoseTime and medicine.nextDoseTime > now:
+        time_left = medicine.nextDoseTime - now
+        hours, remainder = divmod(int(time_left.total_seconds()), 3600)
+        minutes, _ = divmod(remainder, 60)
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Too early. Next dose in {hours}h {minutes}m."
+        )
         
-    next_dose = datetime.now(timezone.utc) + timedelta(hours=medicine.intervalHours)
+    next_dose = now + timedelta(hours=medicine.intervalHours)
     return await db.medicine.update(
         where={"id": medicine_id},
         data={"stockAvailable": medicine.stockAvailable - 1, "nextDoseTime": next_dose}
