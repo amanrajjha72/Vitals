@@ -208,11 +208,16 @@ async def add_family_member(data: FamilyMemberCreate):
 @app.post("/medicine")
 async def add_medicine(data: MedicineCreate):
     """Adds a new medicine to a specific family member."""
+    
+    # Calculate how many doses are taken per day to satisfy the Prisma schema requirement
+    calculated_doses = 24 // data.intervalHours if data.intervalHours > 0 else 1
+
     medicine = await db.medicine.create(
         data={
             "name": data.name,
             "stockAvailable": data.stockAvailable,
             "intervalHours": data.intervalHours,
+            "dosesPerDay": calculated_doses,  # This new field fixes the Prisma crash
             "familyMemberId": data.familyMemberId
         }
     )
