@@ -1,0 +1,129 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Manrope", sans-serif;
+  --font-display: "Sora", sans-serif;
+  --radius-sm: calc(var(--radius) - 3px);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-lg: var(--radius);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-glass: var(--glass);
+  --color-glass-strong: var(--glass-strong);
+  --color-glass-border: var(--glass-border);
+  --color-overlay: var(--overlay);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.96 0.018 254);
+  --foreground: oklch(0.23 0.035 265);
+  --card: oklch(0.99 0.006 255 / 70%);
+  --card-foreground: oklch(0.23 0.035 265);
+  --popover: oklch(0.985 0.009 255);
+  --popover-foreground: oklch(0.23 0.035 265);
+  --primary: oklch(0.52 0.21 270);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.92 0.035 252);
+  --secondary-foreground: oklch(0.31 0.08 265);
+  --muted: oklch(0.91 0.02 255 / 72%);
+  --muted-foreground: oklch(0.5 0.035 260);
+  --accent: oklch(0.79 0.13 205);
+  --accent-foreground: oklch(0.36 0.09 218);
+  --destructive: oklch(0.58 0.22 20);
+  --destructive-soft: oklch(0.94 0.04 20);
+  --border: oklch(0.82 0.03 255 / 65%);
+  --input: oklch(0.87 0.025 255);
+  --ring: oklch(0.52 0.21 270);
+  --glass: oklch(1 0 0 / 48%);
+  --glass-strong: oklch(1 0 0 / 68%);
+  --glass-border: oklch(1 0 0 / 72%);
+  --overlay: oklch(0.2 0.04 265 / 35%);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--color-background); color: var(--color-foreground); font-family: var(--font-sans); letter-spacing: 0; }
+  button, a, input, select { letter-spacing: 0; }
+}
+
+@utility app-shell {
+  background:
+    radial-gradient(60rem 34rem at 7% -5%, color-mix(in oklab, var(--primary) 26%, transparent), transparent 62%),
+    radial-gradient(50rem 32rem at 102% 8%, color-mix(in oklab, var(--accent) 27%, transparent), transparent 58%),
+    radial-gradient(45rem 30rem at 48% 106%, color-mix(in oklab, var(--primary) 14%, transparent), transparent 65%),
+    var(--background);
+}
+
+@utility glass-panel {
+  border: 1px solid var(--glass-border);
+  border-radius: 1rem;
+  background: var(--glass);
+  box-shadow: 0 24px 60px -34px color-mix(in oklab, var(--primary) 38%, transparent);
+  backdrop-filter: blur(22px);
+}
+
+@utility input-wrap {
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background: var(--glass-strong);
+  padding-inline: 0.875rem;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+  &:focus-within { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 14%, transparent); }
+}
+
+@utility field {
+  width: 100%;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background: var(--glass-strong);
+  padding: 0.72rem 0.85rem;
+  outline: none;
+  &:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 14%, transparent); }
+}
+
+@utility dose-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 0.75rem;
+  background: var(--glass-strong);
+  padding: 1rem;
+  box-shadow: 0 8px 24px -20px color-mix(in oklab, var(--foreground) 35%, transparent);
+}
+
+@utility status-chip {
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}

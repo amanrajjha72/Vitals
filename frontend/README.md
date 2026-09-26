@@ -1,16 +1,24 @@
-# React + Vite
+# Lovable Spark
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+this is the frontend code of my project, i want use to change this code make my front look better, attractive and it shouldn't look like it is copy pasted from ai
 
-Currently, two official plugins are available:
+This project was built with [Lovable](https://lovable.dev).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Build with Lovable
 
-## React Compiler
+Continue developing this project in the [Lovable editor](https://lovable.dev/projects/06d512ad-2cf7-41f0-b9a9-e6522c2043ba).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Ship faster**: describe what you want to build and Lovable handles the code.
+- **Stay in sync**: every change made in Lovable is committed straight to this repository.
+- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+
+```sh
+git clone <this-repository-url>
+cd <repository-name>
+npm i
+npm run dev
+```
