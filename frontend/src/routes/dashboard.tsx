@@ -6,21 +6,25 @@ import { Button } from "@/components/ui/button";
 const API = "https://vitals-bget.onrender.com";
 
 type Report = { id: string; filename: string; fileUrl: string; uploadedAt: string };
-type Medicine = { id: string | number; name: string; stockAvailable: number; intervalHours: number; nextDoseTime?: string };
+type Medicine = { id: string | number; name: string; stockAvailable: number; scheduledTime: string; nextDoseTime?: string };
 type FamilyMember = { id: string | number; name: string; medicines?: Medicine[]; reports?: Report[] };
 
 export const Route = createFileRoute("/dashboard")({
-  head: () => ({
-    meta: [
-      { title: "Today | Vitals" },
-      { name: "description", content: "View today's family medicine schedule, stock, and dose status." },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Today | Vitals" }] }),
   component: Dashboard,
 });
 
 function initials(name: string) { return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
 function doseTime(value?: string) { return value ? new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Not scheduled"; }
+
+// Helper to format the daily scheduled time nicely (e.g. 16:00 -> 4:00 PM)
+function formatTimeStr(time24: string) {
+  if (!time24) return "";
+  const [h, m] = time24.split(":");
+  const d = new Date();
+  d.setHours(parseInt(h, 10), parseInt(m, 10));
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -143,7 +147,7 @@ function DoseRow({ medicine, onLogged }: { medicine: Medicine & { memberName: st
   const overdue = Boolean(medicine.nextDoseTime && new Date(medicine.nextDoseTime) < new Date());
   const empty = medicine.stockAvailable <= 0;
   async function take() { setTaking(true); try { const response = await fetch(`${API}/medicine/${medicine.id}/take`, { method: "PUT" }); if (!response.ok) throw new Error(); await onLogged(); } finally { setTaking(false); } }
-  return <article className={overdue ? "dose-row border-destructive/25 bg-destructive-soft/55" : "dose-row"}><span className={overdue ? "grid size-11 shrink-0 place-items-center rounded-lg bg-destructive-soft text-destructive" : "grid size-11 shrink-0 place-items-center rounded-lg bg-accent/25 text-accent-foreground"}>{overdue ? <AlertTriangle size={19} /> : <HeartPulse size={19} />}</span><div className="min-w-0 flex-1"><h3 className="truncate font-display font-semibold">{medicine.name}</h3><p className="mt-1 text-sm text-muted-foreground">{medicine.memberName} · every {medicine.intervalHours}h · {medicine.stockAvailable} left</p></div><div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end"><span className={overdue ? "status-chip bg-destructive-soft text-destructive" : "status-chip bg-primary/10 text-primary"}>{overdue ? "Overdue" : doseTime(medicine.nextDoseTime)}</span><Button disabled={empty || taking} onClick={take}>{empty ? "Out of stock" : taking ? "Logging…" : "Log dose"}</Button></div></article>;
+  return <article className={overdue ? "dose-row border-destructive/25 bg-destructive-soft/55" : "dose-row"}><span className={overdue ? "grid size-11 shrink-0 place-items-center rounded-lg bg-destructive-soft text-destructive" : "grid size-11 shrink-0 place-items-center rounded-lg bg-accent/25 text-accent-foreground"}>{overdue ? <AlertTriangle size={19} /> : <HeartPulse size={19} />}</span><div className="min-w-0 flex-1"><h3 className="truncate font-display font-semibold">{medicine.name}</h3><p className="mt-1 text-sm text-muted-foreground">{medicine.memberName} · at {formatTimeStr(medicine.scheduledTime)} · {medicine.stockAvailable} left</p></div><div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end"><span className={overdue ? "status-chip bg-destructive-soft text-destructive" : "status-chip bg-primary/10 text-primary"}>{overdue ? "Overdue" : doseTime(medicine.nextDoseTime)}</span><Button disabled={empty || taking} onClick={take}>{empty ? "Out of stock" : taking ? "Logging…" : "Log dose"}</Button></div></article>;
 }
 
 function EmptyState({ onAdd }: { onAdd: () => void }) { return <div className="rounded-lg border border-dashed border-border px-5 py-12 text-center"><span className="mx-auto grid size-12 place-items-center rounded-full bg-accent/20 text-accent-foreground"><HeartPulse size={21} /></span><h3 className="mt-4 font-display font-semibold">A clear day starts here</h3><p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">Add a family member and their medicine to build today's schedule.</p><Button className="mt-5" onClick={onAdd}><Plus size={17} /> Add first item</Button></div>; }
@@ -152,7 +156,7 @@ function CareDialog({ kind, members, selectedMember, onClose, onSaved }: { kind:
   const [name, setName] = useState(""); 
   const [memberId, setMemberId] = useState(String(selectedMember ?? members[0]?.id ?? "")); 
   const [stock, setStock] = useState("30"); 
-  const [interval, setInterval] = useState("12"); 
+  const [time, setTime] = useState("16:00"); // Default 4:00 PM picker
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false); 
   const [error, setError] = useState("");
@@ -172,37 +176,26 @@ function CareDialog({ kind, members, selectedMember, onClose, onSaved }: { kind:
         formData.append("file", file);
         formData.append("familyMemberId", memberId);
         
-        response = await fetch(`${API}/report`, { 
-          method: "POST", 
-          body: formData 
-        });
+        response = await fetch(`${API}/report`, { method: "POST", body: formData });
       } else {
         response = await fetch(kind === "member" ? `${API}/family` : `${API}/medicine`, { 
           method: "POST", 
           headers: { "Content-Type": "application/json" }, 
-          body: JSON.stringify(kind === "member" ? { userId, name } : { familyMemberId: memberId, name, stockAvailable: Number(stock), intervalHours: Number(interval) }) 
+          body: JSON.stringify(kind === "member" ? { userId, name } : { familyMemberId: memberId, name, stockAvailable: Number(stock), scheduledTime: time }) 
         }); 
       }
 
       if (!response.ok) throw new Error(); 
       onSaved(); 
-    } catch { 
-      setError("We couldn't save this. Please check the details and retry."); 
-    } finally { 
-      setSaving(false); 
-    } 
+    } catch { setError("We couldn't save this. Please check the details and retry."); } 
+    finally { setSaving(false); } 
   }
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-overlay px-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="dialog-title" className="glass-panel w-full max-w-md bg-popover p-6">
         <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm font-semibold text-primary">Vitals</p>
-            <h2 id="dialog-title" className="mt-1 font-display text-xl font-bold">
-              Add {kind === "member" ? "family member" : kind === "medicine" ? "medicine" : "report"}
-            </h2>
-          </div>
+          <div><p className="text-sm font-semibold text-primary">Vitals</p><h2 id="dialog-title" className="mt-1 font-display text-xl font-bold">Add {kind === "member" ? "family member" : kind === "medicine" ? "medicine" : "report"}</h2></div>
           <Button variant="ghost" aria-label="Close" onClick={onClose} className="size-9 min-h-9 px-0"><X size={18} /></Button>
         </div>
         
@@ -234,8 +227,8 @@ function CareDialog({ kind, members, selectedMember, onClose, onSaved }: { kind:
               <label className="block text-sm font-semibold">Pills in stock
                 <input required min="0" type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="field mt-2" />
               </label>
-              <label className="block text-sm font-semibold">Hours apart
-                <input required min="1" type="number" value={interval} onChange={(e) => setInterval(e.target.value)} className="field mt-2" />
+              <label className="block text-sm font-semibold">Time of day
+                <input required type="time" value={time} onChange={(e) => setTime(e.target.value)} className="field mt-2" />
               </label>
             </div>
           )}

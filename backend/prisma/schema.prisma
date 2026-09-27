@@ -1,0 +1,71 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider             = "prisma-client-py"
+  recursive_type_depth = 5
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String?
+  username      String?        @unique // NEW: Custom User ID for login
+  passwordHash  String? // NEW: Hashed password
+  familyMembers FamilyMember[]
+  createdAt     DateTime       @default(now())
+}
+
+model FamilyMember {
+  id             String          @id @default(uuid())
+  name           String
+  userId         String
+  user           User            @relation(fields: [userId], references: [id])
+  medicines      Medicine[]
+  medicineLogs   MedicineLog[]
+  medicalReports MedicalReport[]
+  reports        Report[] // <-- Add this line
+}
+
+// Add this entirely new model at the bottom:
+model Report {
+  id             String       @id @default(uuid())
+  filename       String
+  fileUrl        String
+  uploadedAt     DateTime     @default(now())
+  familyMemberId String
+  familyMember   FamilyMember @relation(fields: [familyMemberId], references: [id])
+}
+
+model Medicine {
+  id             String        @id @default(uuid())
+  name           String
+  stockAvailable Int
+  scheduledTime  String // e.g., "16:00" for 4:00 PM
+  nextDoseTime   DateTime?
+  familyMemberId String
+  familyMember   FamilyMember  @relation(fields: [familyMemberId], references: [id])
+  MedicineLog    MedicineLog[]
+}
+
+model MedicineLog {
+  id             String       @id @default(uuid())
+  doseAmount     Int
+  scheduledTime  DateTime
+  status         String // "PENDING", "TAKEN"
+  medicineId     String
+  medicine       Medicine     @relation(fields: [medicineId], references: [id])
+  familyMemberId String
+  familyMember   FamilyMember @relation(fields: [familyMemberId], references: [id])
+}
+
+model MedicalReport {
+  id             String       @id @default(uuid())
+  fileName       String
+  fileUrl        String
+  uploadedAt     DateTime     @default(now())
+  familyMemberId String
+  familyMember   FamilyMember @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+}
