@@ -2,8 +2,7 @@ import os
 import shutil
 import json
 import urllib.request
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import List
@@ -19,8 +18,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import bcrypt
-import urllib.error
-
 
 load_dotenv()
 
@@ -36,14 +33,12 @@ def get_next_dose(times_list: List[str], current_ist: datetime) -> datetime:
     """Finds the next chronologically upcoming time from a list of times."""
     sorted_times = sorted(times_list)
     
-    # Check if any scheduled times are later today
     for t in sorted_times:
         h, m = map(int, t.split(":"))
         candidate = current_ist.replace(hour=h, minute=m, second=0, microsecond=0)
         if candidate > current_ist:
             return candidate
             
-    # If all times today have passed, pick the first scheduled time tomorrow
     h, m = map(int, sorted_times[0].split(":"))
     return current_ist.replace(hour=h, minute=m, second=0, microsecond=0) + timedelta(days=1)
 
@@ -103,38 +98,6 @@ def send_alert_email(patient_name: str, medicine_name: str):
     except Exception as e:
         print(f"Failed to send HTTP email: {e}")
 
-@app.get("/test-email")
-def force_test_email():
-    api_key = os.getenv("RESEND_API_KEY")
-    receiver_email = os.getenv("EMAIL_SENDER")
-    
-    if not api_key or not receiver_email:
-        return {"status": "failed", "reason": "RESEND_API_KEY or EMAIL_SENDER is missing on Render."}
-        
-    try:
-        data = json.dumps({
-            "from": "Acme <onboarding@resend.dev>",
-            "to": [receiver_email],
-            "subject": "Vitals Connection Test",
-            "text": "Success! Your FastAPI server successfully connected via Resend HTTP API!"
-        }).encode("utf-8")
-        
-        req = urllib.request.Request(
-            "https://api.resend.com/emails",
-            data=data,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "User-Agent": "Python-Vitals-App"
-            }
-        )
-        urllib.request.urlopen(req)
-        return {"status": "success", "message": f"Email delivered via HTTP to {receiver_email}"}
-    except urllib.error.HTTPError as e:
-        error_details = e.read().decode("utf-8")
-        return {"status": "failed", "reason": f"Resend API Error {e.code}: {error_details}"}
-    except Exception as e:
-        return {"status": "failed", "reason": f"General error: {str(e)}"}
 # --- BACKGROUND SCHEDULER ---
 scheduler = AsyncIOScheduler()
 async def check_missed_doses():
@@ -252,7 +215,7 @@ def force_test_email():
             data=data,
             headers={
                 "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
                 "User-Agent": "Python-Vitals-App"
             }
         )
