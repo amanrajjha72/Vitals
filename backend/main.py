@@ -236,8 +236,9 @@ async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File
         return {"message": "Success"}
     except Exception as e: raise HTTPException(500, str(e))
 
+
 # --- TEMPORARY WIPE ENDPOINT ---
-@app.get("/admin/wipe-database")
+@app.api_route("/admin/wipe-database", methods=["GET", "POST", "DELETE"])
 async def wipe_database():
     try:
         await db.report.delete_many()
