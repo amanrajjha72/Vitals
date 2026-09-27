@@ -1,10 +1,11 @@
 import os
 import smtplib
+import shutil
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -19,6 +20,9 @@ load_dotenv()
 
 app = FastAPI(title="Vitals API")
 db = Prisma()
+
+# Create a directory to store uploaded reports
+os.makedirs("uploads/reports", exist_ok=True)
 
 # --- PASSWORD HASHING SETUP ---
 def get_password_hash(password: str) -> str:
@@ -270,3 +274,27 @@ async def take_dose(medicine_id: str):
         where={"id": medicine_id},
         data={"stockAvailable": medicine.stockAvailable - 1, "nextDoseTime": next_dose}
     )
+
+# --- REPORT ROUTES ---
+@app.post("/report")
+async def upload_report(
+    familyMemberId: str = Form(...),
+    file: UploadFile = File(...)
+):
+    try:
+        # Create a safe file path
+        file_path = f"uploads/reports/{file.filename}"
+        
+        # Save the file to your server's disk
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # TODO: Later, you can add a database record here to link the file_path to the familyMemberId
+            
+        return {
+            "message": "Report uploaded successfully", 
+            "filename": file.filename,
+            "familyMemberId": familyMemberId
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not upload file: {str(e)}")
