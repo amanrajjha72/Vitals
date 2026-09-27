@@ -92,17 +92,27 @@ def send_alert_email(patient_name: str, medicine_name: str):
         print(f"Failed to send email: {e}")
 
 # --- BACKGROUND SCHEDULER ---
+# --- BACKGROUND SCHEDULER ---
 scheduler = AsyncIOScheduler()
 async def check_missed_doses():
     cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=10)
     try:
         late_medicines = await db.medicine.find_many(where={"nextDoseTime": {"lte": cutoff_time}}, include={"familyMember": True})
         for med in late_medicines:
+            # 1. Send the email
             patient_name = med.familyMember.name if med.familyMember else "Unknown"
             send_alert_email(patient_name, med.name)
-            await db.medicine.update(where={"id": med.id}, data={"nextDoseTime": None})
+            
+            # 2. Skip to the NEXT scheduled dose instead of clearing it to None
+            now_ist = datetime.now(IST)
+            next_dose_ist = get_next_dose(med.scheduledTimes, now_ist)
+            
+            await db.medicine.update(
+                where={"id": med.id}, 
+                data={"nextDoseTime": next_dose_ist.astimezone(timezone.utc)}
+            )
     except Exception as e:
-        pass
+        print(f"Scheduler error: {e}")
 
 # --- MIDDLEWARE & OAUTH ---
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "fallback-key"))
