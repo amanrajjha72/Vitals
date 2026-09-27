@@ -235,10 +235,11 @@ async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File
         await db.report.create(data={"filename": file.filename, "fileUrl": f"/uploads/reports/{file.filename}", "familyMemberId": familyMemberId})
         return {"message": "Success"}
     except Exception as e: raise HTTPException(500, str(e))
-    @app.delete("/admin/wipe-database")
+
+# --- TEMPORARY WIPE ENDPOINT ---
+@app.delete("/admin/wipe-database")
 async def wipe_database():
     try:
-        # Delete in order of dependencies to avoid foreign key conflicts
         await db.report.delete_many()
         await db.medicine.delete_many()
         await db.familymember.delete_many()
