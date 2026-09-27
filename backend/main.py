@@ -237,7 +237,7 @@ async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File
     except Exception as e: raise HTTPException(500, str(e))
 
 # --- TEMPORARY WIPE ENDPOINT ---
-@app.delete("/admin/wipe-database")
+@app.get("/admin/wipe-database")
 async def wipe_database():
     try:
         await db.report.delete_many()
