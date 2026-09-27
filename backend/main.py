@@ -19,6 +19,8 @@ from authlib.integrations.starlette_client import OAuth
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import bcrypt
 import socket
+import urllib.request
+import json
 
 old_getaddrinfo = socket.getaddrinfo
 def new_getaddrinfo(*args, **kwargs):
@@ -80,25 +82,32 @@ class MedicineCreate(BaseModel):
     scheduledTimes: List[str] # Now accepts a list like ["08:00", "16:00", "00:00"]
 
 # --- EMAIL NOTIFICATION SERVICE ---
-# --- EMAIL NOTIFICATION SERVICE ---
 def send_alert_email(patient_name: str, medicine_name: str):
-    sender = os.getenv("EMAIL_SENDER")
-    password = os.getenv("EMAIL_PASSWORD")
-    if not sender or not password: return
-    msg = MIMEMultipart()
-    msg['From'] = sender
-    msg['To'] = sender 
-    msg['Subject'] = f"🚨 URGENT: Missed Medication for {patient_name}"
-    msg.attach(MIMEText(f"Patient {patient_name} is more than 10 minutes late taking their scheduled dose of {medicine_name}.", 'plain'))
+    api_key = os.getenv("RESEND_API_KEY")
+    receiver_email = os.getenv("EMAIL_SENDER") 
+    
+    if not api_key or not receiver_email: 
+        return
+        
     try:
-        # Use SMTP_SSL on port 465 with a 10-second timeout
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10)
-        server.login(sender, password)
-        server.send_message(msg)
-        server.quit()
+        data = json.dumps({
+            "from": "Vitals App <onboarding@resend.dev>",
+            "to": receiver_email,
+            "subject": f"🚨 URGENT: Missed Medication for {patient_name}",
+            "text": f"Patient {patient_name} is more than 10 minutes late taking their scheduled dose of {medicine_name}."
+        }).encode("utf-8")
+        
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+        )
+        urllib.request.urlopen(req)
     except Exception as e:
-        print(f"Failed to send email: {e}")
-
+        print(f"Failed to send HTTP email: {e}")
 # --- BACKGROUND SCHEDULER ---
 # --- BACKGROUND SCHEDULER ---
 scheduler = AsyncIOScheduler()
@@ -200,28 +209,32 @@ async def take_dose(medicine_id: str):
 
 @app.get("/test-email")
 def force_test_email():
-    sender = os.getenv("EMAIL_SENDER")
-    password = os.getenv("EMAIL_PASSWORD")
+    api_key = os.getenv("RESEND_API_KEY")
+    receiver_email = os.getenv("EMAIL_SENDER")
     
-    if not sender or not password:
-        return {"status": "failed", "reason": "EMAIL_SENDER or EMAIL_PASSWORD environment variables are missing or empty on Render."}
+    if not api_key or not receiver_email:
+        return {"status": "failed", "reason": "RESEND_API_KEY or EMAIL_SENDER is missing on Render."}
         
     try:
-        msg = MIMEMultipart()
-        msg['From'] = sender
-        msg['To'] = sender 
-        msg['Subject'] = "Vitals Connection Test"
-        msg.attach(MIMEText("Your FastAPI server successfully connected to Gmail!", 'plain'))
+        data = json.dumps({
+            "from": "Vitals App <onboarding@resend.dev>",
+            "to": receiver_email,
+            "subject": "Vitals Connection Test",
+            "text": "Success! Your FastAPI server successfully bypassed the firewall and connected via HTTP API!"
+        }).encode("utf-8")
         
-        # ---> THIS IS THE CRUCIAL FIX FOR THE LOADING ISSUE <---
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10)
-        server.login(sender, password)
-        server.send_message(msg)
-        server.quit()
-        return {"status": "success", "message": f"Email sent to {sender}"}
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+        )
+        urllib.request.urlopen(req)
+        return {"status": "success", "message": f"Email delivered via HTTP to {receiver_email}"}
     except Exception as e:
-        return {"status": "failed", "reason": f"Gmail blocked the request: {str(e)}"}
-    
+        return {"status": "failed", "reason": f"HTTP API blocked or failed: {str(e)}"}
 @app.post("/report")
 async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File(...)):
     try:
