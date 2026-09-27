@@ -95,13 +95,46 @@ def send_alert_email(patient_name: str, medicine_name: str):
             data=data,
             headers={
                 "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "User-Agent": "Python-Vitals-App"
             }
         )
         urllib.request.urlopen(req)
     except Exception as e:
         print(f"Failed to send HTTP email: {e}")
 
+@app.get("/test-email")
+def force_test_email():
+    api_key = os.getenv("RESEND_API_KEY")
+    receiver_email = os.getenv("EMAIL_SENDER")
+    
+    if not api_key or not receiver_email:
+        return {"status": "failed", "reason": "RESEND_API_KEY or EMAIL_SENDER is missing on Render."}
+        
+    try:
+        data = json.dumps({
+            "from": "Acme <onboarding@resend.dev>",
+            "to": [receiver_email],
+            "subject": "Vitals Connection Test",
+            "text": "Success! Your FastAPI server successfully connected via Resend HTTP API!"
+        }).encode("utf-8")
+        
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "Python-Vitals-App"
+            }
+        )
+        urllib.request.urlopen(req)
+        return {"status": "success", "message": f"Email delivered via HTTP to {receiver_email}"}
+    except urllib.error.HTTPError as e:
+        error_details = e.read().decode("utf-8")
+        return {"status": "failed", "reason": f"Resend API Error {e.code}: {error_details}"}
+    except Exception as e:
+        return {"status": "failed", "reason": f"General error: {str(e)}"}
 # --- BACKGROUND SCHEDULER ---
 scheduler = AsyncIOScheduler()
 async def check_missed_doses():
@@ -220,6 +253,7 @@ def force_test_email():
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json"
+                "User-Agent": "Python-Vitals-App"
             }
         )
         urllib.request.urlopen(req)
