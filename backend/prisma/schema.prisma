@@ -43,7 +43,7 @@ model Medicine {
   id             String        @id @default(uuid())
   name           String
   stockAvailable Int
-  scheduledTime  String // e.g., "16:00" for 4:00 PM
+  scheduledTimes String[] // Now an array to store multiple times!
   nextDoseTime   DateTime?
   familyMemberId String
   familyMember   FamilyMember  @relation(fields: [familyMemberId], references: [id])

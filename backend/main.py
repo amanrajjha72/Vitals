@@ -4,7 +4,8 @@ import shutil
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo # Added to handle your local timezone
+from zoneinfo import ZoneInfo
+from typing import List
 
 from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import RedirectResponse
@@ -22,10 +23,27 @@ load_dotenv()
 
 app = FastAPI(title="Vitals API")
 db = Prisma()
-IST = ZoneInfo("Asia/Kolkata") # Ensures 4:00 PM behaves like 4:00 PM in India
+IST = ZoneInfo("Asia/Kolkata")
 
 os.makedirs("uploads/reports", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# --- HELPER: GET NEXT DOSE TIME ---
+def get_next_dose(times_list: List[str], current_ist: datetime) -> datetime:
+    """Finds the next chronologically upcoming time from a list of times."""
+    sorted_times = sorted(times_list)
+    
+    # Check if any scheduled times are later today
+    for t in sorted_times:
+        h, m = map(int, t.split(":"))
+        candidate = current_ist.replace(hour=h, minute=m, second=0, microsecond=0)
+        if candidate > current_ist:
+            return candidate
+            
+    # If all times today have passed, pick the first scheduled time tomorrow
+    h, m = map(int, sorted_times[0].split(":"))
+    return current_ist.replace(hour=h, minute=m, second=0, microsecond=0) + timedelta(days=1)
+
 
 # --- PASSWORD HASHING SETUP ---
 def get_password_hash(password: str) -> str:
@@ -52,7 +70,7 @@ class MedicineCreate(BaseModel):
     familyMemberId: str
     name: str
     stockAvailable: int
-    scheduledTime: str # Receives time like "16:00"
+    scheduledTimes: List[str] # Now accepts a list like ["08:00", "16:00", "00:00"]
 
 # --- EMAIL NOTIFICATION SERVICE ---
 def send_alert_email(patient_name: str, medicine_name: str):
@@ -136,17 +154,16 @@ async def add_family_member(data: FamilyMemberCreate):
 async def add_medicine(data: MedicineCreate):
     existing = next((m for m in await db.medicine.find_many(where={"familyMemberId": data.familyMemberId}) if m.name.lower() == data.name.strip().lower()), None)
     
-    # Calculate the exact time for the dose today in IST
     now_ist = datetime.now(IST)
-    t_hour, t_min = map(int, data.scheduledTime.split(":"))
-    next_dose_ist = now_ist.replace(hour=t_hour, minute=t_min, second=0, microsecond=0)
-    
-    # If that time already passed today, schedule it for tomorrow
-    if next_dose_ist < now_ist: next_dose_ist += timedelta(days=1)
+    next_dose_ist = get_next_dose(data.scheduledTimes, now_ist)
     next_dose_utc = next_dose_ist.astimezone(timezone.utc)
 
-    if existing: return await db.medicine.update(where={"id": existing.id}, data={"stockAvailable": existing.stockAvailable + data.stockAvailable, "scheduledTime": data.scheduledTime, "nextDoseTime": next_dose_utc})
-    return await db.medicine.create(data={"name": data.name.strip(), "stockAvailable": data.stockAvailable, "scheduledTime": data.scheduledTime, "nextDoseTime": next_dose_utc, "familyMemberId": data.familyMemberId})
+    if existing: 
+        return await db.medicine.update(
+            where={"id": existing.id}, 
+            data={"stockAvailable": existing.stockAvailable + data.stockAvailable, "scheduledTimes": data.scheduledTimes, "nextDoseTime": next_dose_utc}
+        )
+    return await db.medicine.create(data={"name": data.name.strip(), "stockAvailable": data.stockAvailable, "scheduledTimes": data.scheduledTimes, "nextDoseTime": next_dose_utc, "familyMemberId": data.familyMemberId})
 
 @app.put("/medicine/{medicine_id}/take")
 async def take_dose(medicine_id: str):
@@ -158,10 +175,8 @@ async def take_dose(medicine_id: str):
         time_left = medicine.nextDoseTime - datetime.now(timezone.utc)
         raise HTTPException(400, f"Too early. Next dose in {int(time_left.total_seconds()) // 3600}h {(int(time_left.total_seconds()) % 3600) // 60}m.")
         
-    # Schedule exactly 24 hours later at the same target time
-    t_hour, t_min = map(int, medicine.scheduledTime.split(":"))
     now_ist = datetime.now(IST)
-    next_dose_ist = now_ist.replace(hour=t_hour, minute=t_min, second=0, microsecond=0) + timedelta(days=1)
+    next_dose_ist = get_next_dose(medicine.scheduledTimes, now_ist)
     
     return await db.medicine.update(where={"id": medicine_id}, data={"stockAvailable": medicine.stockAvailable - 1, "nextDoseTime": next_dose_ist.astimezone(timezone.utc)})
 
