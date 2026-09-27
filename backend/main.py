@@ -95,7 +95,7 @@ def send_alert_email(patient_name: str, medicine_name: str):
 # --- BACKGROUND SCHEDULER ---
 scheduler = AsyncIOScheduler()
 async def check_missed_doses():
-    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=2)
     try:
         late_medicines = await db.medicine.find_many(where={"nextDoseTime": {"lte": cutoff_time}}, include={"familyMember": True})
         for med in late_medicines:
