@@ -206,8 +206,8 @@ def force_test_email():
         msg['Subject'] = "Vitals Connection Test"
         msg.attach(MIMEText("Your FastAPI server successfully connected to Gmail!", 'plain'))
         
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
+        # ---> THIS IS THE CRUCIAL FIX FOR THE LOADING ISSUE <---
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10)
         server.login(sender, password)
         server.send_message(msg)
         server.quit()
