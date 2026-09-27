@@ -1,6 +1,7 @@
 import os
-import smtplib
 import shutil
+import json
+import urllib.request
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, timezone
@@ -18,15 +19,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import bcrypt
-import socket
-import urllib.request
-import json
-
-old_getaddrinfo = socket.getaddrinfo
-def new_getaddrinfo(*args, **kwargs):
-    responses = old_getaddrinfo(*args, **kwargs)
-    return [response for response in responses if response[0] == socket.AF_INET]
-socket.getaddrinfo = new_getaddrinfo
 
 load_dotenv()
 
@@ -53,7 +45,6 @@ def get_next_dose(times_list: List[str], current_ist: datetime) -> datetime:
     h, m = map(int, sorted_times[0].split(":"))
     return current_ist.replace(hour=h, minute=m, second=0, microsecond=0) + timedelta(days=1)
 
-
 # --- PASSWORD HASHING SETUP ---
 def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -79,9 +70,9 @@ class MedicineCreate(BaseModel):
     familyMemberId: str
     name: str
     stockAvailable: int
-    scheduledTimes: List[str] # Now accepts a list like ["08:00", "16:00", "00:00"]
+    scheduledTimes: List[str]
 
-# --- EMAIL NOTIFICATION SERVICE ---
+# --- EMAIL NOTIFICATION SERVICE (RESEND HTTP API) ---
 def send_alert_email(patient_name: str, medicine_name: str):
     api_key = os.getenv("RESEND_API_KEY")
     receiver_email = os.getenv("EMAIL_SENDER") 
@@ -91,8 +82,8 @@ def send_alert_email(patient_name: str, medicine_name: str):
         
     try:
         data = json.dumps({
-            "from": "Vitals App <onboarding@resend.dev>",
-            "to": receiver_email,
+            "from": "Acme <onboarding@resend.dev>",
+            "to": [receiver_email],
             "subject": f"🚨 URGENT: Missed Medication for {patient_name}",
             "text": f"Patient {patient_name} is more than 10 minutes late taking their scheduled dose of {medicine_name}."
         }).encode("utf-8")
@@ -108,7 +99,7 @@ def send_alert_email(patient_name: str, medicine_name: str):
         urllib.request.urlopen(req)
     except Exception as e:
         print(f"Failed to send HTTP email: {e}")
-# --- BACKGROUND SCHEDULER ---
+
 # --- BACKGROUND SCHEDULER ---
 scheduler = AsyncIOScheduler()
 async def check_missed_doses():
@@ -116,11 +107,9 @@ async def check_missed_doses():
     try:
         late_medicines = await db.medicine.find_many(where={"nextDoseTime": {"lte": cutoff_time}}, include={"familyMember": True})
         for med in late_medicines:
-            # 1. Send the email
             patient_name = med.familyMember.name if med.familyMember else "Unknown"
             send_alert_email(patient_name, med.name)
             
-            # 2. Skip to the NEXT scheduled dose instead of clearing it to None
             now_ist = datetime.now(IST)
             next_dose_ist = get_next_dose(med.scheduledTimes, now_ist)
             
@@ -217,10 +206,10 @@ def force_test_email():
         
     try:
         data = json.dumps({
-            "from": "Vitals App <onboarding@resend.dev>",
-            "to": receiver_email,
+            "from": "Acme <onboarding@resend.dev>",
+            "to": [receiver_email],
             "subject": "Vitals Connection Test",
-            "text": "Success! Your FastAPI server successfully bypassed the firewall and connected via HTTP API!"
+            "text": "Success! Your FastAPI server successfully connected via Resend HTTP API!"
         }).encode("utf-8")
         
         req = urllib.request.Request(
@@ -235,6 +224,7 @@ def force_test_email():
         return {"status": "success", "message": f"Email delivered via HTTP to {receiver_email}"}
     except Exception as e:
         return {"status": "failed", "reason": f"HTTP API blocked or failed: {str(e)}"}
+    
 @app.post("/report")
 async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File(...)):
     try:
