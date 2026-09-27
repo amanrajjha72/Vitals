@@ -19,6 +19,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import bcrypt
+import urllib.error
+
 
 load_dotenv()
 
@@ -222,8 +224,11 @@ def force_test_email():
         )
         urllib.request.urlopen(req)
         return {"status": "success", "message": f"Email delivered via HTTP to {receiver_email}"}
+    except urllib.error.HTTPError as e:
+        error_details = e.read().decode("utf-8")
+        return {"status": "failed", "reason": f"Resend API Error {e.code}: {error_details}"}
     except Exception as e:
-        return {"status": "failed", "reason": f"HTTP API blocked or failed: {str(e)}"}
+        return {"status": "failed", "reason": f"General error: {str(e)}"}
     
 @app.post("/report")
 async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File(...)):
