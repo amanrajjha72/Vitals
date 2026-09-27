@@ -73,6 +73,7 @@ class MedicineCreate(BaseModel):
     scheduledTimes: List[str] # Now accepts a list like ["08:00", "16:00", "00:00"]
 
 # --- EMAIL NOTIFICATION SERVICE ---
+# --- EMAIL NOTIFICATION SERVICE ---
 def send_alert_email(patient_name: str, medicine_name: str):
     sender = os.getenv("EMAIL_SENDER")
     password = os.getenv("EMAIL_PASSWORD")
@@ -83,8 +84,8 @@ def send_alert_email(patient_name: str, medicine_name: str):
     msg['Subject'] = f"🚨 URGENT: Missed Medication for {patient_name}"
     msg.attach(MIMEText(f"Patient {patient_name} is more than 10 minutes late taking their scheduled dose of {medicine_name}.", 'plain'))
     try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
+        # Use SMTP_SSL on port 465 with a 10-second timeout
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10)
         server.login(sender, password)
         server.send_message(msg)
         server.quit()
@@ -191,7 +192,7 @@ async def take_dose(medicine_id: str):
     return await db.medicine.update(where={"id": medicine_id}, data={"stockAvailable": medicine.stockAvailable - 1, "nextDoseTime": next_dose_ist.astimezone(timezone.utc)})
 
 @app.get("/test-email")
-async def force_test_email():
+def force_test_email():
     sender = os.getenv("EMAIL_SENDER")
     password = os.getenv("EMAIL_PASSWORD")
     
@@ -213,6 +214,7 @@ async def force_test_email():
         return {"status": "success", "message": f"Email sent to {sender}"}
     except Exception as e:
         return {"status": "failed", "reason": f"Gmail blocked the request: {str(e)}"}
+    
 @app.post("/report")
 async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File(...)):
     try:
