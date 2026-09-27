@@ -190,6 +190,29 @@ async def take_dose(medicine_id: str):
     
     return await db.medicine.update(where={"id": medicine_id}, data={"stockAvailable": medicine.stockAvailable - 1, "nextDoseTime": next_dose_ist.astimezone(timezone.utc)})
 
+@app.get("/test-email")
+async def force_test_email():
+    sender = os.getenv("EMAIL_SENDER")
+    password = os.getenv("EMAIL_PASSWORD")
+    
+    if not sender or not password:
+        return {"status": "failed", "reason": "EMAIL_SENDER or EMAIL_PASSWORD environment variables are missing or empty on Render."}
+        
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = sender
+        msg['To'] = sender 
+        msg['Subject'] = "Vitals Connection Test"
+        msg.attach(MIMEText("Your FastAPI server successfully connected to Gmail!", 'plain'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender, password)
+        server.send_message(msg)
+        server.quit()
+        return {"status": "success", "message": f"Email sent to {sender}"}
+    except Exception as e:
+        return {"status": "failed", "reason": f"Gmail blocked the request: {str(e)}"}
 @app.post("/report")
 async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File(...)):
     try:
