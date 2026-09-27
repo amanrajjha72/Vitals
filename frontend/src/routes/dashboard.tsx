@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Check, HeartPulse, LogOut, Plus, UserRound, X } from "lucide-react";
+import { AlertTriangle, Check, FileText, HeartPulse, LogOut, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -9,14 +9,12 @@ type Medicine = { id: string | number; name: string; stockAvailable: number; int
 type FamilyMember = { id: string | number; name: string; medicines?: Medicine[] };
 
 export const Route = createFileRoute("/dashboard")({
-  head: () => ({ meta: [
-    { title: "Today | Vitals" },
-    { name: "description", content: "View today's family medicine schedule, stock, and dose status." },
-    { property: "og:title", content: "Today | Vitals" },
-    { property: "og:description", content: "Your family's daily medicine schedule in one clear view." },
-    { property: "og:type", content: "website" },
-    { name: "twitter:card", content: "summary_large_image" },
-  ]}),
+  head: () => ({
+    meta: [
+      { title: "Today | Vitals" },
+      { name: "description", content: "View today's family medicine schedule, stock, and dose status." },
+    ],
+  }),
   component: Dashboard,
 });
 
@@ -28,7 +26,7 @@ function Dashboard() {
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [dialog, setDialog] = useState<"member" | "medicine" | null>(null);
+  const [dialog, setDialog] = useState<"member" | "medicine" | "report" | null>(null);
   const [selectedMember, setSelectedMember] = useState<string | number | null>(null);
 
   const load = useCallback(async () => {
@@ -84,7 +82,19 @@ function Dashboard() {
         </section>
 
         <section id="family" className="mt-5 grid gap-5 lg:grid-cols-[1.25fr_.75fr]">
-          <div className="glass-panel p-5 sm:p-6"><div className="flex items-center justify-between gap-4"><div><h2 className="font-display text-lg font-bold">Family members</h2><p className="text-sm text-muted-foreground">Care at a glance</p></div><Button variant="secondary" onClick={() => setDialog("member")}><Plus size={17} /> Add member</Button></div><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{members.map((member) => <div key={member.id} className="rounded-lg bg-glass-strong p-4 ring-1 ring-glass-border"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-accent/25 text-sm font-bold text-accent-foreground">{initials(member.name)}</span><div className="min-w-0"><h3 className="truncate font-display text-sm font-semibold">{member.name}</h3><p className="text-xs text-muted-foreground">{member.medicines?.length || 0} medicines</p></div></div><Button variant="ghost" className="mt-3 w-full" onClick={() => openMedicine(member.id)}><Plus size={15} /> Add medicine</Button></div>)}</div></div>
+          <div className="glass-panel p-5 sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="font-display text-lg font-bold">Family members</h2>
+                <p className="text-sm text-muted-foreground">Care at a glance</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => { setSelectedMember(members[0]?.id ?? null); setDialog("report"); }} disabled={!members.length}><FileText size={17} className="mr-2" /> Add report</Button>
+                <Button variant="secondary" onClick={() => setDialog("member")}><Plus size={17} className="mr-2" /> Add member</Button>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{members.map((member) => <div key={member.id} className="rounded-lg bg-glass-strong p-4 ring-1 ring-glass-border"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-accent/25 text-sm font-bold text-accent-foreground">{initials(member.name)}</span><div className="min-w-0"><h3 className="truncate font-display text-sm font-semibold">{member.name}</h3><p className="text-xs text-muted-foreground">{member.medicines?.length || 0} medicines</p></div></div><Button variant="ghost" className="mt-3 w-full" onClick={() => openMedicine(member.id)}><Plus size={15} /> Add medicine</Button></div>)}</div>
+          </div>
           <div className="glass-panel p-5 sm:p-6"><h2 className="font-display text-lg font-bold">This week's rhythm</h2><p className="text-sm text-muted-foreground">A simple view of consistency</p><div className="mt-8 flex h-28 items-end gap-3">{[55, 78, 68, 92, 84, 42, 25].map((height, index) => <div key={index} className="flex flex-1 flex-col items-center gap-2"><div className="w-full rounded-t-md bg-primary/70" style={{ height: `${height}%`, opacity: .38 + index * .08 }} /><span className="text-[10px] font-semibold text-muted-foreground">{"MTWTFSS"[index]}</span></div>)}</div></div>
         </section>
       </div>
@@ -103,8 +113,107 @@ function DoseRow({ medicine, onLogged }: { medicine: Medicine & { memberName: st
 
 function EmptyState({ onAdd }: { onAdd: () => void }) { return <div className="rounded-lg border border-dashed border-border px-5 py-12 text-center"><span className="mx-auto grid size-12 place-items-center rounded-full bg-accent/20 text-accent-foreground"><HeartPulse size={21} /></span><h3 className="mt-4 font-display font-semibold">A clear day starts here</h3><p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">Add a family member and their medicine to build today's schedule.</p><Button className="mt-5" onClick={onAdd}><Plus size={17} /> Add first item</Button></div>; }
 
-function CareDialog({ kind, members, selectedMember, onClose, onSaved }: { kind: "member" | "medicine"; members: FamilyMember[]; selectedMember: string | number | null; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(""); const [memberId, setMemberId] = useState(String(selectedMember ?? members[0]?.id ?? "")); const [stock, setStock] = useState("30"); const [interval, setInterval] = useState("12"); const [saving, setSaving] = useState(false); const [error, setError] = useState("");
-  async function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setSaving(true); setError(""); try { const userId = localStorage.getItem("userId"); const response = await fetch(kind === "member" ? `${API}/family` : `${API}/medicine`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(kind === "member" ? { userId, name } : { familyMemberId: memberId, name, stockAvailable: Number(stock), intervalHours: Number(interval) }) }); if (!response.ok) throw new Error(); onSaved(); } catch { setError("We couldn't save this. Please check the details and retry."); } finally { setSaving(false); } }
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-overlay px-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section role="dialog" aria-modal="true" aria-labelledby="dialog-title" className="glass-panel w-full max-w-md bg-popover p-6"><div className="flex items-start justify-between"><div><p className="text-sm font-semibold text-primary">Vitals</p><h2 id="dialog-title" className="mt-1 font-display text-xl font-bold">Add {kind === "member" ? "family member" : "medicine"}</h2></div><Button variant="ghost" aria-label="Close" onClick={onClose} className="size-9 min-h-9 px-0"><X size={18} /></Button></div>{error && <p className="mt-4 rounded-lg bg-destructive-soft p-3 text-sm text-destructive">{error}</p>}<form onSubmit={save} className="mt-6 space-y-4">{kind === "medicine" && <label className="block text-sm font-semibold">For family member<select value={memberId} onChange={(e) => setMemberId(e.target.value)} className="field mt-2">{members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>}<label className="block text-sm font-semibold">{kind === "member" ? "Name" : "Medicine name"}<input required value={name} onChange={(e) => setName(e.target.value)} className="field mt-2" placeholder={kind === "member" ? "e.g. Maya" : "e.g. Metformin 500mg"} /></label>{kind === "medicine" && <div className="grid grid-cols-2 gap-4"><label className="block text-sm font-semibold">Pills in stock<input required min="0" type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="field mt-2" /></label><label className="block text-sm font-semibold">Hours apart<input required min="1" type="number" value={interval} onChange={(e) => setInterval(e.target.value)} className="field mt-2" /></label></div>}<div className="flex justify-end gap-2 pt-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving || (kind === "medicine" && !memberId)}><Check size={16} />{saving ? "Saving…" : "Save"}</Button></div></form></section></div>;
+function CareDialog({ kind, members, selectedMember, onClose, onSaved }: { kind: "member" | "medicine" | "report"; members: FamilyMember[]; selectedMember: string | number | null; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(""); 
+  const [memberId, setMemberId] = useState(String(selectedMember ?? members[0]?.id ?? "")); 
+  const [stock, setStock] = useState("30"); 
+  const [interval, setInterval] = useState("12"); 
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false); 
+  const [error, setError] = useState("");
+
+  async function save(event: FormEvent<HTMLFormElement>) { 
+    event.preventDefault(); 
+    setSaving(true); 
+    setError(""); 
+    
+    try { 
+      const userId = localStorage.getItem("userId"); 
+      let response;
+
+      if (kind === "report") {
+        if (!file || !memberId) throw new Error("File and member are required");
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("familyMemberId", memberId);
+        
+        response = await fetch(`${API}/report`, { 
+          method: "POST", 
+          body: formData 
+        });
+      } else {
+        response = await fetch(kind === "member" ? `${API}/family` : `${API}/medicine`, { 
+          method: "POST", 
+          headers: { "Content-Type": "application/json" }, 
+          body: JSON.stringify(kind === "member" ? { userId, name } : { familyMemberId: memberId, name, stockAvailable: Number(stock), intervalHours: Number(interval) }) 
+        }); 
+      }
+
+      if (!response.ok) throw new Error(); 
+      onSaved(); 
+    } catch { 
+      setError("We couldn't save this. Please check the details and retry."); 
+    } finally { 
+      setSaving(false); 
+    } 
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-overlay px-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="dialog-title" className="glass-panel w-full max-w-md bg-popover p-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-sm font-semibold text-primary">Vitals</p>
+            <h2 id="dialog-title" className="mt-1 font-display text-xl font-bold">
+              Add {kind === "member" ? "family member" : kind === "medicine" ? "medicine" : "report"}
+            </h2>
+          </div>
+          <Button variant="ghost" aria-label="Close" onClick={onClose} className="size-9 min-h-9 px-0"><X size={18} /></Button>
+        </div>
+        
+        {error && <p className="mt-4 rounded-lg bg-destructive-soft p-3 text-sm text-destructive">{error}</p>}
+        
+        <form onSubmit={save} className="mt-6 space-y-4">
+          {(kind === "medicine" || kind === "report") && (
+            <label className="block text-sm font-semibold">For family member
+              <select value={memberId} onChange={(e) => setMemberId(e.target.value)} className="field mt-2">
+                {members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+              </select>
+            </label>
+          )}
+
+          {kind !== "report" && (
+            <label className="block text-sm font-semibold">{kind === "member" ? "Name" : "Medicine name"}
+              <input required value={name} onChange={(e) => setName(e.target.value)} className="field mt-2" placeholder={kind === "member" ? "e.g. Maya" : "e.g. Metformin 500mg"} />
+            </label>
+          )}
+
+          {kind === "report" && (
+            <label className="block text-sm font-semibold">Upload document
+              <input type="file" required onChange={(e) => setFile(e.target.files?.[0] || null)} className="field mt-2 py-2" accept=".pdf,.png,.jpg,.jpeg" />
+            </label>
+          )}
+
+          {kind === "medicine" && (
+            <div className="grid grid-cols-2 gap-4">
+              <label className="block text-sm font-semibold">Pills in stock
+                <input required min="0" type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="field mt-2" />
+              </label>
+              <label className="block text-sm font-semibold">Hours apart
+                <input required min="1" type="number" value={interval} onChange={(e) => setInterval(e.target.value)} className="field mt-2" />
+              </label>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={saving || ((kind === "medicine" || kind === "report") && !memberId)}>
+              <Check size={16} className="mr-2" />
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
 }
