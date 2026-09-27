@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from prisma import Prisma
 from dotenv import load_dotenv
@@ -24,16 +25,17 @@ db = Prisma()
 # Create a directory to store uploaded reports
 os.makedirs("uploads/reports", exist_ok=True)
 
+# Expose the uploads folder so the frontend can fetch the PDFs
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 # --- PASSWORD HASHING SETUP ---
 def get_password_hash(password: str) -> str:
-    # Hash a password for the first time
     pwd_bytes = password.encode('utf-8')
     salt = bcrypt.gensalt()
     hashed_password = bcrypt.hashpw(password=pwd_bytes, salt=salt)
     return hashed_password.decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    # Check if the provided password matches the hash
     password_byte_enc = plain_password.encode('utf-8')
     hashed_password_byte_enc = hashed_password.encode('utf-8')
     return bcrypt.checkpw(password=password_byte_enc, hashed_password=hashed_password_byte_enc)
@@ -81,8 +83,6 @@ def send_alert_email(patient_name: str, medicine_name: str):
         server.send_message(msg)
         server.quit()
         print(f"📧 Alert email successfully sent for {patient_name}!")
-    except smtplib.SMTPAuthenticationError:
-        print("❌ SMTP Auth Error: Invalid App Password.")
     except Exception as e:
         print(f"❌ Failed to send email alert: {e}")
 
@@ -90,24 +90,16 @@ def send_alert_email(patient_name: str, medicine_name: str):
 scheduler = AsyncIOScheduler()
 
 async def check_missed_doses():
-    """Runs in the background to detect doses missed by 10+ minutes."""
     cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=10)
-    
     try:
         late_medicines = await db.medicine.find_many(
             where={"nextDoseTime": {"lte": cutoff_time}},
             include={"familyMember": True}
         )
-        
         for med in late_medicines:
             patient_name = med.familyMember.name if med.familyMember else "Unknown"
             send_alert_email(patient_name, med.name)
-            
-            # Clear nextDoseTime to prevent duplicate emails
-            await db.medicine.update(
-                where={"id": med.id},
-                data={"nextDoseTime": None}
-            )
+            await db.medicine.update(where={"id": med.id}, data={"nextDoseTime": None})
     except Exception as e:
         print(f"Error checking missed doses: {e}")
 
@@ -144,19 +136,15 @@ async def shutdown():
 # --- GOOGLE OAUTH ROUTES ---
 @app.get("/auth/login")
 async def login(request: Request):
-    return await oauth.google.authorize_redirect(
-        request, redirect_uri="https://vitals-bget.onrender.com/auth/callback"
-    )
+    return await oauth.google.authorize_redirect(request, redirect_uri="https://vitals-bget.onrender.com/auth/callback")
 
 @app.get("/auth/callback")
 async def auth_callback(request: Request):
     token = await oauth.google.authorize_access_token(request)
     user_info = token.get('userinfo')
-    
     user = await db.user.find_unique(where={"email": user_info.get("email")})
     if not user:
         user = await db.user.create(data={"name": user_info.get("name"), "email": user_info.get("email")})
-        
     return RedirectResponse(url=f"https://vitals-sand.vercel.app?userId={user.id}")
 
 # --- CUSTOM CREDENTIAL ROUTES ---
@@ -165,16 +153,8 @@ async def setup_credentials(data: SetupCredentials):
     existing_user = await db.user.find_unique(where={"username": data.username})
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already exists. Please choose another.")
-    
     hashed_pw = get_password_hash(data.password)
-    
-    updated_user = await db.user.update(
-        where={"id": data.user_db_id},
-        data={
-            "username": data.username,
-            "passwordHash": hashed_pw
-        }
-    )
+    updated_user = await db.user.update(where={"id": data.user_db_id}, data={"username": data.username, "passwordHash": hashed_pw})
     return {"message": "Credentials successfully set!", "userId": updated_user.id}
 
 @app.post("/auth/login/custom")
@@ -182,98 +162,58 @@ async def custom_login(data: CustomLogin):
     user = await db.user.find_unique(where={"username": data.username})
     if not user or not user.passwordHash:
         raise HTTPException(status_code=401, detail="Invalid username or password")
-        
     if not verify_password(data.password, user.passwordHash):
         raise HTTPException(status_code=401, detail="Invalid username or password")
-        
     return {"message": "Login successful", "userId": user.id}
 
 # --- DASHBOARD & FAMILY ROUTES ---
 @app.get("/user/{user_id}/family")
 async def get_dashboard_data(user_id: str):
-    """Fetches all family members and their tracked medicines for the dashboard."""
+    """Fetches all family members and their tracked medicines AND reports."""
     family_members = await db.familymember.find_many(
         where={"userId": user_id},
-        include={"medicines": True}
+        include={
+            "medicines": True,
+            "reports": True # Instructs database to attach reports
+        }
     )
     return family_members
 
 @app.post("/family")
 async def add_family_member(data: FamilyMemberCreate):
-    """Creates a new family member linked to the user."""
-    member = await db.familymember.create(
-        data={
-            "name": data.name,
-            "userId": data.userId
-        }
-    )
-    return member
+    return await db.familymember.create(data={"name": data.name, "userId": data.userId})
 
 @app.post("/medicine")
 async def add_medicine(data: MedicineCreate):
-    """Adds a new medicine, or updates stock/intervals if it already exists."""
-    
-    # Fetch all medicines for this specific family member
-    existing_medicines = await db.medicine.find_many(
-        where={"familyMemberId": data.familyMemberId}
-    )
-    
-    # Case-insensitive search for an exact match (e.g., "Metformin" == "metformin")
+    existing_medicines = await db.medicine.find_many(where={"familyMemberId": data.familyMemberId})
     target_name = data.name.strip().lower()
     existing_medicine = next((m for m in existing_medicines if m.name.lower() == target_name), None)
 
     if existing_medicine:
-        # If it exists, combine the new stock with the old stock
-        updated_medicine = await db.medicine.update(
+        return await db.medicine.update(
             where={"id": existing_medicine.id},
-            data={
-                "stockAvailable": existing_medicine.stockAvailable + data.stockAvailable,
-                "intervalHours": data.intervalHours  # Applies the newest interval schedule
-            }
+            data={"stockAvailable": existing_medicine.stockAvailable + data.stockAvailable, "intervalHours": data.intervalHours}
         )
-        return updated_medicine
     
-    # If it does not exist, create it normally
     calculated_doses = 24 // data.intervalHours if data.intervalHours > 0 else 1
-    medicine = await db.medicine.create(
-        data={
-            "name": data.name.strip(),
-            "stockAvailable": data.stockAvailable,
-            "intervalHours": data.intervalHours,
-            "dosesPerDay": calculated_doses,
-            "familyMemberId": data.familyMemberId
-        }
+    return await db.medicine.create(
+        data={"name": data.name.strip(), "stockAvailable": data.stockAvailable, "intervalHours": data.intervalHours, "dosesPerDay": calculated_doses, "familyMemberId": data.familyMemberId}
     )
-    return medicine
 
-# --- MEDICINE ROUTES ---
 @app.put("/medicine/{medicine_id}/take")
 async def take_dose(medicine_id: str):
-    """Logs a dose, strictly preventing doses taken before the nextDoseTime."""
     medicine = await db.medicine.find_unique(where={"id": medicine_id})
-    
-    if not medicine:
-        raise HTTPException(status_code=404, detail="Medicine not found")
-    if medicine.stockAvailable <= 0:
-        raise HTTPException(status_code=400, detail="Out of stock")
+    if not medicine: raise HTTPException(status_code=404, detail="Medicine not found")
+    if medicine.stockAvailable <= 0: raise HTTPException(status_code=400, detail="Out of stock")
 
     now = datetime.now(timezone.utc)
-
-    # Strictly enforce the time delay
     if medicine.nextDoseTime and medicine.nextDoseTime > now:
         time_left = medicine.nextDoseTime - now
         hours, remainder = divmod(int(time_left.total_seconds()), 3600)
-        minutes, _ = divmod(remainder, 60)
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Too early. Next dose in {hours}h {minutes}m."
-        )
+        raise HTTPException(status_code=400, detail=f"Too early. Next dose in {hours}h {remainder // 60}m.")
         
     next_dose = now + timedelta(hours=medicine.intervalHours)
-    return await db.medicine.update(
-        where={"id": medicine_id},
-        data={"stockAvailable": medicine.stockAvailable - 1, "nextDoseTime": next_dose}
-    )
+    return await db.medicine.update(where={"id": medicine_id}, data={"stockAvailable": medicine.stockAvailable - 1, "nextDoseTime": next_dose})
 
 # --- REPORT ROUTES ---
 @app.post("/report")
@@ -289,7 +229,14 @@ async def upload_report(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # TODO: Later, you can add a database record here to link the file_path to the familyMemberId
+        # Save the report details to the database!
+        await db.report.create(
+            data={
+                "filename": file.filename,
+                "fileUrl": f"/uploads/reports/{file.filename}",
+                "familyMemberId": familyMemberId
+            }
+        )
             
         return {
             "message": "Report uploaded successfully", 
