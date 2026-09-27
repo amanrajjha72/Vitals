@@ -1,12 +1,13 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Check, FileText, HeartPulse, LogOut, Plus, X } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, FileText, HeartPulse, LogOut, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 
 const API = "https://vitals-bget.onrender.com";
 
+type Report = { id: string; filename: string; fileUrl: string; uploadedAt: string };
 type Medicine = { id: string | number; name: string; stockAvailable: number; intervalHours: number; nextDoseTime?: string };
-type FamilyMember = { id: string | number; name: string; medicines?: Medicine[] };
+type FamilyMember = { id: string | number; name: string; medicines?: Medicine[]; reports?: Report[] };
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -93,7 +94,41 @@ function Dashboard() {
                 <Button variant="secondary" onClick={() => setDialog("member")}><Plus size={17} className="mr-2" /> Add member</Button>
               </div>
             </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{members.map((member) => <div key={member.id} className="rounded-lg bg-glass-strong p-4 ring-1 ring-glass-border"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-accent/25 text-sm font-bold text-accent-foreground">{initials(member.name)}</span><div className="min-w-0"><h3 className="truncate font-display text-sm font-semibold">{member.name}</h3><p className="text-xs text-muted-foreground">{member.medicines?.length || 0} medicines</p></div></div><Button variant="ghost" className="mt-3 w-full" onClick={() => openMedicine(member.id)}><Plus size={15} /> Add medicine</Button></div>)}</div>
+            
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {members.map((member) => (
+                <div key={member.id} className="flex flex-col rounded-lg bg-glass-strong p-4 ring-1 ring-glass-border">
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent/25 text-sm font-bold text-accent-foreground">{initials(member.name)}</span>
+                    <div className="min-w-0">
+                      <h3 className="truncate font-display text-sm font-semibold">{member.name}</h3>
+                      <p className="text-xs text-muted-foreground">{member.medicines?.length || 0} medicines · {member.reports?.length || 0} reports</p>
+                    </div>
+                  </div>
+                  
+                  {member.reports && member.reports.length > 0 && (
+                    <div className="mt-4 space-y-2 flex-1">
+                      {member.reports.map((report) => {
+                        const url = report.fileUrl.startsWith("http") ? report.fileUrl : `${API}${report.fileUrl.startsWith("/") ? "" : "/"}${report.fileUrl}`;
+                        return (
+                          <a key={report.id} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between rounded bg-background/50 p-2 text-sm hover:bg-muted/80 transition-colors ring-1 ring-border/50">
+                            <span className="flex items-center gap-2 min-w-0">
+                              <FileText size={14} className="text-muted-foreground shrink-0" />
+                              <span className="truncate text-xs font-medium">{report.filename}</span>
+                            </span>
+                            <ExternalLink size={14} className="text-muted-foreground shrink-0" />
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
+                  
+                  <Button variant="ghost" className="mt-4 w-full bg-background/50 hover:bg-muted" onClick={() => openMedicine(member.id)}>
+                    <Plus size={15} className="mr-2" /> Add medicine
+                  </Button>
+                </div>
+              ))}
+            </div>
           </div>
           <div className="glass-panel p-5 sm:p-6"><h2 className="font-display text-lg font-bold">This week's rhythm</h2><p className="text-sm text-muted-foreground">A simple view of consistency</p><div className="mt-8 flex h-28 items-end gap-3">{[55, 78, 68, 92, 84, 42, 25].map((height, index) => <div key={index} className="flex flex-1 flex-col items-center gap-2"><div className="w-full rounded-t-md bg-primary/70" style={{ height: `${height}%`, opacity: .38 + index * .08 }} /><span className="text-[10px] font-semibold text-muted-foreground">{"MTWTFSS"[index]}</span></div>)}</div></div>
         </section>
