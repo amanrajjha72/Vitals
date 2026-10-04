@@ -161,6 +161,55 @@ async def custom_login(data: CustomLogin):
 async def get_dashboard_data(user_id: str):
     return await db.familymember.find_many(where={"userId": user_id}, include={"medicines": True, "reports": True})
 
+@app.get("/user/{user_id}/rhythm")
+async def get_weekly_rhythm(user_id: str):
+    # 1. Get all medicines for this user's family
+    family_members = await db.familymember.find_many(
+        where={"userId": user_id},
+        include={"medicines": True}
+    )
+    
+    medicines = []
+    for fm in family_members:
+        if fm.medicines:
+            medicines.extend(fm.medicines)
+            
+    # Calculate how many doses total should be taken per day
+    daily_expected = sum(len(m.scheduledTimes) for m in medicines if m.scheduledTimes)
+    if daily_expected == 0:
+        return [0, 0, 0, 0, 0, 0, 0]
+        
+    medicine_ids = [m.id for m in medicines]
+    
+    # 2. Get start of current week (Monday)
+    now_ist = datetime.now(IST)
+    start_of_week = (now_ist - timedelta(days=now_ist.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # 3. Query all dose logs for the current week
+    logs = await db.doselog.find_many(
+        where={
+            "medicineId": {"in": medicine_ids},
+            "takenAt": {"gte": start_of_week.astimezone(timezone.utc)}
+        }
+    )
+    
+    # 4. Group by day and calculate percentages
+    daily_counts = {i: 0 for i in range(7)}
+    for log in logs:
+        log_ist = log.takenAt.astimezone(IST)
+        day_index = log_ist.weekday() # 0 = Monday, 6 = Sunday
+        daily_counts[day_index] += 1
+        
+    rhythm = []
+    for i in range(7):
+        if i > now_ist.weekday():
+            rhythm.append(0) # Future days in the week have 0 logs
+        else:
+            pct = min(100, int((daily_counts[i] / daily_expected) * 100))
+            rhythm.append(pct)
+            
+    return rhythm
+
 @app.post("/family")
 async def add_family_member(data: FamilyMemberCreate):
     return await db.familymember.create(data={"name": data.name, "userId": data.userId})
@@ -213,6 +262,15 @@ async def take_dose(medicine_id: str):
     now_ist = datetime.now(IST)
     next_dose_ist = get_next_dose(medicine.scheduledTimes, now_ist)
     
+    # 1. Log the dose in the new DoseLog table
+    await db.doselog.create(
+        data={
+            "medicineId": medicine_id, 
+            "takenAt": datetime.now(timezone.utc)
+        }
+    )
+    
+    # 2. Deduct stock and set next time
     return await db.medicine.update(
         where={"id": medicine_id}, 
         data={
@@ -233,6 +291,7 @@ async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File
 @app.api_route("/admin/wipe-database", methods=["GET", "POST", "DELETE"])
 async def wipe_database():
     try:
+        await db.doselog.delete_many()
         await db.report.delete_many()
         await db.medicine.delete_many()
         await db.familymember.delete_many()
