@@ -76,7 +76,6 @@ class MedicineUpdate(BaseModel):
     scheduledTimes: List[str]
 
 # --- MEMORY CACHE FOR ALERTS ---
-# Tracks sent alerts so the scheduler doesn't spam emails, WITHOUT advancing the user's schedule
 alerted_doses = {} 
 
 def send_alert_email(patient_name: str, medicine_name: str):
@@ -109,7 +108,6 @@ async def check_missed_doses():
     try:
         late_medicines = await db.medicine.find_many(where={"nextDoseTime": {"lte": cutoff_time}}, include={"familyMember": True})
         for med in late_medicines:
-            # If we already emailed the user for this specific missed timestamp, ignore it
             last_alert = alerted_doses.get(med.id)
             if last_alert == med.nextDoseTime:
                 continue 
@@ -117,8 +115,6 @@ async def check_missed_doses():
             patient_name = med.familyMember.name if med.familyMember else "Unknown"
             send_alert_email(patient_name, med.name)
             
-            # Mark this dose as alerted, but DO NOT advance the schedule. 
-            # This allows the user to log it late.
             alerted_doses[med.id] = med.nextDoseTime
             
     except Exception as e: print(f"Scheduler error: {e}")
@@ -174,7 +170,6 @@ async def add_medicine(data: MedicineCreate):
     existing = next((m for m in await db.medicine.find_many(where={"familyMemberId": data.familyMemberId}) if m.name.lower() == data.name.strip().lower()), None)
     
     if existing: 
-        # REFILL LOGIC: Only add stock, do NOT overwrite the existing scheduled times!
         return await db.medicine.update(
             where={"id": existing.id}, 
             data={"stockAvailable": existing.stockAvailable + data.stockAvailable}
@@ -182,7 +177,15 @@ async def add_medicine(data: MedicineCreate):
         
     now_ist = datetime.now(IST)
     next_dose_ist = get_next_dose(data.scheduledTimes, now_ist)
-    return await db.medicine.create(data={"name": data.name.strip(), "stockAvailable": data.stockAvailable, "scheduledTimes": data.scheduledTimes, "nextDoseTime": next_dose_ist.astimezone(timezone.utc), "familyMemberId": data.familyMemberId})
+    return await db.medicine.create(
+        data={
+            "name": data.name.strip(), 
+            "stockAvailable": data.stockAvailable, 
+            "scheduledTimes": {"set": data.scheduledTimes}, 
+            "nextDoseTime": next_dose_ist.astimezone(timezone.utc), 
+            "familyMemberId": data.familyMemberId
+        }
+    )
 
 @app.put("/medicine/{medicine_id}")
 async def edit_medicine(medicine_id: str, data: MedicineUpdate):
@@ -191,7 +194,15 @@ async def edit_medicine(medicine_id: str, data: MedicineUpdate):
 
     now_ist = datetime.now(IST)
     next_dose_ist = get_next_dose(data.scheduledTimes, now_ist)
-    return await db.medicine.update(where={"id": medicine_id}, data={"stockAvailable": data.stockAvailable, "scheduledTimes": data.scheduledTimes, "nextDoseTime": next_dose_ist.astimezone(timezone.utc)})
+    
+    return await db.medicine.update(
+        where={"id": medicine_id},
+        data={
+            "stockAvailable": data.stockAvailable,
+            "scheduledTimes": {"set": data.scheduledTimes}, 
+            "nextDoseTime": next_dose_ist.astimezone(timezone.utc)
+        }
+    )
 
 @app.put("/medicine/{medicine_id}/take")
 async def take_dose(medicine_id: str):
@@ -199,7 +210,6 @@ async def take_dose(medicine_id: str):
     if not medicine: raise HTTPException(404, "Medicine not found")
     if medicine.stockAvailable <= 0: raise HTTPException(400, "Out of stock")
 
-    # Always calculate the next upcoming dose based on right now
     now_ist = datetime.now(IST)
     next_dose_ist = get_next_dose(medicine.scheduledTimes, now_ist)
     
@@ -210,6 +220,7 @@ async def take_dose(medicine_id: str):
             "nextDoseTime": next_dose_ist.astimezone(timezone.utc)
         }
     )
+    
 @app.post("/report")
 async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File(...)):
     try:
