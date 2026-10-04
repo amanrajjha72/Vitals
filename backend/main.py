@@ -68,6 +68,16 @@ class MedicineCreate(BaseModel):
     name: str
     stockAvailable: int
     scheduledTimes: List[str]
+    class MedicineCreate(BaseModel):
+    familyMemberId: str
+    name: str
+    stockAvailable: int
+    scheduledTimes: List[str]
+
+# --- ADD THIS NEW SCHEMA ---
+class MedicineUpdate(BaseModel):
+    stockAvailable: int
+    scheduledTimes: List[str]
 
 # --- EMAIL NOTIFICATION SERVICE (RESEND HTTP API) ---
 def send_alert_email(patient_name: str, medicine_name: str):
@@ -178,21 +188,23 @@ async def add_medicine(data: MedicineCreate):
             data={"stockAvailable": existing.stockAvailable + data.stockAvailable, "scheduledTimes": data.scheduledTimes, "nextDoseTime": next_dose_utc}
         )
     return await db.medicine.create(data={"name": data.name.strip(), "stockAvailable": data.stockAvailable, "scheduledTimes": data.scheduledTimes, "nextDoseTime": next_dose_utc, "familyMemberId": data.familyMemberId})
-
-@app.put("/medicine/{medicine_id}/take")
-async def take_dose(medicine_id: str):
+@app.put("/medicine/{medicine_id}")
+async def edit_medicine(medicine_id: str, data: MedicineUpdate):
     medicine = await db.medicine.find_unique(where={"id": medicine_id})
     if not medicine: raise HTTPException(404, "Medicine not found")
-    if medicine.stockAvailable <= 0: raise HTTPException(400, "Out of stock")
 
-    if medicine.nextDoseTime and medicine.nextDoseTime > datetime.now(timezone.utc):
-        time_left = medicine.nextDoseTime - datetime.now(timezone.utc)
-        raise HTTPException(400, f"Too early. Next dose in {int(time_left.total_seconds()) // 3600}h {(int(time_left.total_seconds()) % 3600) // 60}m.")
-        
     now_ist = datetime.now(IST)
-    next_dose_ist = get_next_dose(medicine.scheduledTimes, now_ist)
+    # Recalculate the next chronologically upcoming dose based on the new times
+    next_dose_ist = get_next_dose(data.scheduledTimes, now_ist)
     
-    return await db.medicine.update(where={"id": medicine_id}, data={"stockAvailable": medicine.stockAvailable - 1, "nextDoseTime": next_dose_ist.astimezone(timezone.utc)})
+    return await db.medicine.update(
+        where={"id": medicine_id},
+        data={
+            "stockAvailable": data.stockAvailable,
+            "scheduledTimes": data.scheduledTimes,
+            "nextDoseTime": next_dose_ist.astimezone(timezone.utc)
+        }
+    )
 
 @app.get("/test-email")
 def force_test_email():
