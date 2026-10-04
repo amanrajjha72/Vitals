@@ -1,38 +1,34 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Check, ExternalLink, FileText, HeartPulse, LogOut, Plus, X } from "lucide-react";
+import { AlertTriangle, Check, HeartPulse, LogOut, Plus, X, Pill, Clock, Pencil } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 
 const API = "https://vitals-bget.onrender.com";
 
-type Report = { id: string; filename: string; fileUrl: string; uploadedAt: string };
 type Medicine = { id: string | number; name: string; stockAvailable: number; scheduledTimes: string[]; nextDoseTime?: string };
-type FamilyMember = { id: string | number; name: string; medicines?: Medicine[]; reports?: Report[] };
+type FamilyMember = { id: string | number; name: string; medicines?: Medicine[] };
 
 export const Route = createFileRoute("/dashboard")({
-  head: () => ({ meta: [{ title: "Today | Vitals" }] }),
+  head: () => ({ meta: [
+    { title: "Today | Vitals" },
+    { name: "description", content: "View today's family medicine schedule, stock, and dose status." },
+  ]}),
   component: Dashboard,
 });
 
 function initials(name: string) { return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
 function doseTime(value?: string) { return value ? new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Not scheduled"; }
 
-// Helper to format 24h time strings neatly
-function formatTimeStr(time24: string) {
-  if (!time24) return "";
-  const [h, m] = time24.split(":");
-  const d = new Date();
-  d.setHours(parseInt(h, 10), parseInt(m, 10));
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
-
 function Dashboard() {
   const navigate = useNavigate();
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [dialog, setDialog] = useState<"member" | "medicine" | "report" | null>(null);
+  
+  // Dialog state logic
+  const [dialog, setDialog] = useState<"member" | "medicine" | "edit-medicine" | null>(null);
   const [selectedMember, setSelectedMember] = useState<string | number | null>(null);
+  const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
 
   const load = useCallback(async () => {
     const userId = localStorage.getItem("userId");
@@ -50,119 +46,229 @@ function Dashboard() {
   const medicines = useMemo(() => members.flatMap((member) => (member.medicines || []).map((medicine) => ({ ...medicine, memberName: member.name }))), [members]);
   const sorted = useMemo(() => [...medicines].sort((a, b) => new Date(a.nextDoseTime || 8640000000000000).getTime() - new Date(b.nextDoseTime || 8640000000000000).getTime()), [medicines]);
 
-  function openMedicine(memberId?: string | number) { setSelectedMember(memberId ?? members[0]?.id ?? null); setDialog("medicine"); }
+  function openMedicine(memberId?: string | number) { 
+    setSelectedMember(memberId ?? members[0]?.id ?? null); 
+    setDialog("medicine"); 
+  }
+  
+  function openEditMedicine(medicine: Medicine) {
+    setSelectedMedicine(medicine);
+    setDialog("edit-medicine");
+  }
+
   function logout() { localStorage.removeItem("userId"); void navigate({ to: "/" }); }
 
-  if (loading) return <main className="app-shell grid min-h-screen place-items-center"><div className="text-center"><span className="mx-auto grid size-12 place-items-center rounded-xl bg-primary text-primary-foreground"><HeartPulse className="animate-pulse" /></span><p className="mt-4 text-sm font-semibold text-muted-foreground">Preparing today's care…</p></div></main>;
+  if (loading) return (
+    <main className="grid min-h-screen place-items-center bg-zinc-50/50">
+      <div className="flex flex-col items-center gap-3">
+        <HeartPulse className="size-8 animate-pulse text-zinc-400" />
+        <p className="text-sm font-medium text-zinc-500">Preparing today's schedule...</p>
+      </div>
+    </main>
+  );
 
   return (
-    <main className="app-shell min-h-screen">
-      <div className="mx-auto max-w-7xl px-5 py-6 lg:px-8">
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/15"><HeartPulse size={20} /></span><span className="font-display text-lg font-bold">Vitals</span></div>
-          <nav className="order-3 flex w-full justify-center gap-1 rounded-full bg-glass p-1.5 shadow-sm ring-1 ring-glass-border md:order-2 md:w-auto">
-            <a href="#today" className="rounded-full bg-glass-strong px-4 py-2 text-sm font-semibold text-primary shadow-sm">Today</a><a href="#family" className="rounded-full px-4 py-2 text-sm font-medium text-muted-foreground">Family</a><a href="#inventory" className="rounded-full px-4 py-2 text-sm font-medium text-muted-foreground">Stock</a>
-          </nav>
-          <div className="order-2 flex items-center gap-2 md:order-3"><span className="hidden text-sm font-medium text-muted-foreground sm:block">{new Date().toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</span><Button variant="ghost" aria-label="Log out" title="Log out" onClick={logout} className="size-10 px-0"><LogOut size={18} /></Button></div>
-        </header>
+    <main className="min-h-screen bg-zinc-50/30 selection:bg-zinc-200">
+      <nav className="sticky top-0 z-10 border-b border-zinc-200 bg-white/80 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <div className="flex items-center gap-3">
+            <div className="grid size-8 place-items-center rounded-md bg-zinc-900 text-white shadow-sm">
+              <HeartPulse size={16} strokeWidth={2.5} />
+            </div>
+            <span className="font-semibold tracking-tight text-zinc-900">Vitals</span>
+          </div>
+          <div className="flex items-center gap-6 text-sm font-medium text-zinc-500">
+            <a href="#today" className="text-zinc-900 transition-colors hover:text-zinc-900">Today</a>
+            <a href="#family" className="transition-colors hover:text-zinc-900">Family</a>
+            <a href="#inventory" className="transition-colors hover:text-zinc-900">Stock</a>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="hidden text-sm font-medium text-zinc-500 md:block">
+              {new Date().toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}
+            </span>
+            <Button variant="ghost" size="icon" onClick={logout} className="text-zinc-500 hover:text-zinc-900">
+              <LogOut size={18} />
+            </Button>
+          </div>
+        </div>
+      </nav>
 
-        {message && <div className="mt-5 flex items-center justify-between rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive"><span>{message}</span><Button variant="ghost" aria-label="Dismiss" onClick={() => setMessage("")} className="size-8 min-h-8 px-0"><X size={16} /></Button></div>}
+      <div className="mx-auto max-w-6xl px-6 py-8">
+        {message && (
+          <div className="mb-8 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600">
+            <span>{message}</span>
+            <Button variant="ghost" size="icon" onClick={() => setMessage("")} className="h-6 w-6 hover:bg-red-100">
+              <X size={14} />
+            </Button>
+          </div>
+        )}
 
-        <section id="today" className="mt-7 grid gap-5 lg:grid-cols-3">
-          <div className="glass-panel p-5 sm:p-6 lg:col-span-2">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold text-primary">Daily timeline</p><h1 className="mt-1 font-display text-2xl font-bold">Next up</h1><p className="mt-1 text-sm text-muted-foreground">{medicines.length ? `${medicines.length} medicines across ${members.length} family members` : "Your care schedule starts here"}</p></div><Button onClick={() => openMedicine()} disabled={!members.length}><Plus size={17} /> Add medicine</Button></div>
-            <div className="mt-6 space-y-3">
-              {sorted.map((medicine) => <DoseRow key={medicine.id} medicine={medicine} onLogged={load} />)}
+        <div className="grid gap-8 lg:grid-cols-12">
+          <div className="lg:col-span-8">
+            <div className="mb-6 flex items-end justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Schedule</h1>
+                <p className="mt-1 text-sm text-zinc-500">
+                  {medicines.length ? `${medicines.length} medications to manage today` : "No medications scheduled"}
+                </p>
+              </div>
+              <Button onClick={() => openMedicine()} disabled={!members.length} className="bg-zinc-900 hover:bg-zinc-800 shadow-sm">
+                <Plus size={16} className="mr-2" /> Add Medicine
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {sorted.map((medicine) => <DoseRow key={medicine.id} medicine={medicine} onLogged={load} onEdit={openEditMedicine} />)}
               {!sorted.length && <EmptyState onAdd={() => members.length ? openMedicine() : setDialog("member")} />}
             </div>
           </div>
 
-          <section id="inventory" className="glass-panel p-5 sm:p-6">
-            <h2 className="font-display text-lg font-bold">Medicine inventory</h2><p className="mt-1 text-sm text-muted-foreground">Stock across the household</p>
-            <div className="mt-6 space-y-5">
-              {medicines.slice(0, 6).map((medicine) => { const amount = Math.max(0, Math.min(100, medicine.stockAvailable)); return <div key={medicine.id}><div className="mb-2 flex items-center justify-between gap-3 text-sm"><span className="truncate font-semibold">{medicine.name}</span><span className={medicine.stockAvailable <= 5 ? "font-bold text-destructive" : "font-semibold text-primary"}>{medicine.stockAvailable} left</span></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className={medicine.stockAvailable <= 5 ? "h-full bg-destructive" : "h-full bg-primary"} style={{ width: `${amount}%` }} /></div></div>; })}
-              {!medicines.length && <p className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">Stock appears here once medicines are added.</p>}
-            </div>
-          </section>
-        </section>
+          <div className="space-y-8 lg:col-span-4">
+            <section id="inventory" className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+              <div className="mb-6 flex items-center gap-2">
+                <Pill size={18} className="text-zinc-400" />
+                <h2 className="font-semibold tracking-tight text-zinc-900">Low Stock Alerts</h2>
+              </div>
+              
+              <div className="space-y-5">
+                {medicines.slice(0, 6).map((medicine) => { 
+                  const amount = Math.max(0, Math.min(100, medicine.stockAvailable)); 
+                  const isLow = medicine.stockAvailable <= 5;
+                  return (
+                    <div key={medicine.id}>
+                      <div className="mb-2 flex items-center justify-between text-sm">
+                        <span className="font-medium text-zinc-700">{medicine.name}</span>
+                        <span className={`font-semibold ${isLow ? "text-red-600" : "text-zinc-500"}`}>
+                          {medicine.stockAvailable} left
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-100">
+                        <div className={`h-full rounded-full transition-all duration-500 ${isLow ? "bg-red-500" : "bg-zinc-900"}`} style={{ width: `${amount}%` }} />
+                      </div>
+                    </div>
+                  ); 
+                })}
+                {!medicines.length && <p className="text-sm text-zinc-500">Inventory tracking will appear here.</p>}
+              </div>
+            </section>
 
-        <section id="family" className="mt-5 grid gap-5 lg:grid-cols-[1.25fr_.75fr]">
-          <div className="glass-panel p-5 sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="font-display text-lg font-bold">Family members</h2>
-                <p className="text-sm text-muted-foreground">Care at a glance</p>
+            <section id="family" className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+              <div className="mb-6 flex items-center justify-between">
+                <h2 className="font-semibold tracking-tight text-zinc-900">Profiles</h2>
+                <Button variant="ghost" size="sm" onClick={() => setDialog("member")} className="h-8 px-2 text-zinc-500 hover:text-zinc-900">
+                  <Plus size={16} className="mr-1" /> Add
+                </Button>
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => { setSelectedMember(members[0]?.id ?? null); setDialog("report"); }} disabled={!members.length}><FileText size={17} className="mr-2" /> Add report</Button>
-                <Button variant="secondary" onClick={() => setDialog("member")}><Plus size={17} className="mr-2" /> Add member</Button>
-              </div>
-            </div>
-            
-            <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {members.map((member) => (
-                <div key={member.id} className="flex flex-col rounded-lg bg-glass-strong p-4 ring-1 ring-glass-border">
-                  <div className="flex items-center gap-3">
-                    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent/25 text-sm font-bold text-accent-foreground">{initials(member.name)}</span>
-                    <div className="min-w-0">
-                      <h3 className="truncate font-display text-sm font-semibold">{member.name}</h3>
-                      <p className="text-xs text-muted-foreground">{member.medicines?.length || 0} medicines · {member.reports?.length || 0} reports</p>
+              <div className="space-y-4">
+                {members.map((member) => (
+                  <div key={member.id} className="flex items-center justify-between group">
+                    <div className="flex items-center gap-3">
+                      <span className="grid size-9 place-items-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600">
+                        {initials(member.name)}
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium text-zinc-900">{member.name}</p>
+                        <p className="text-xs text-zinc-500">{member.medicines?.length || 0} active prescriptions</p>
+                      </div>
                     </div>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100" onClick={() => openMedicine(member.id)}>
+                      <Plus size={14} />
+                    </Button>
                   </div>
-                  
-                  {member.reports && member.reports.length > 0 && (
-                    <div className="mt-4 space-y-2 flex-1">
-                      {member.reports.map((report) => {
-                        const url = report.fileUrl.startsWith("http") ? report.fileUrl : `${API}${report.fileUrl.startsWith("/") ? "" : "/"}${report.fileUrl}`;
-                        return (
-                          <a key={report.id} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between rounded bg-background/50 p-2 text-sm hover:bg-muted/80 transition-colors ring-1 ring-border/50">
-                            <span className="flex items-center gap-2 min-w-0">
-                              <FileText size={14} className="text-muted-foreground shrink-0" />
-                              <span className="truncate text-xs font-medium">{report.filename}</span>
-                            </span>
-                            <ExternalLink size={14} className="text-muted-foreground shrink-0" />
-                          </a>
-                        );
-                      })}
-                    </div>
-                  )}
-                  
-                  <Button variant="ghost" className="mt-4 w-full bg-background/50 hover:bg-muted" onClick={() => openMedicine(member.id)}>
-                    <Plus size={15} className="mr-2" /> Add medicine
-                  </Button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </section>
           </div>
-          <div className="glass-panel p-5 sm:p-6"><h2 className="font-display text-lg font-bold">This week's rhythm</h2><p className="text-sm text-muted-foreground">A simple view of consistency</p><div className="mt-8 flex h-28 items-end gap-3">{[55, 78, 68, 92, 84, 42, 25].map((height, index) => <div key={index} className="flex flex-1 flex-col items-center gap-2"><div className="w-full rounded-t-md bg-primary/70" style={{ height: `${height}%`, opacity: .38 + index * .08 }} /><span className="text-[10px] font-semibold text-muted-foreground">{"MTWTFSS"[index]}</span></div>)}</div></div>
-        </section>
+        </div>
       </div>
-      {dialog && <CareDialog kind={dialog} members={members} selectedMember={selectedMember} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); void load(); }} />}
+      {dialog && <CareDialog kind={dialog} members={members} selectedMember={selectedMember} medicineToEdit={selectedMedicine ?? undefined} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); void load(); }} />}
     </main>
   );
 }
 
-function DoseRow({ medicine, onLogged }: { medicine: Medicine & { memberName: string }; onLogged: () => Promise<void> }) {
+function DoseRow({ medicine, onLogged, onEdit }: { medicine: Medicine & { memberName: string }; onLogged: () => Promise<void>; onEdit: (med: Medicine) => void }) {
   const [taking, setTaking] = useState(false);
   const overdue = Boolean(medicine.nextDoseTime && new Date(medicine.nextDoseTime) < new Date());
   const empty = medicine.stockAvailable <= 0;
-  async function take() { setTaking(true); try { const response = await fetch(`${API}/medicine/${medicine.id}/take`, { method: "PUT" }); if (!response.ok) throw new Error(); await onLogged(); } finally { setTaking(false); } }
-  return <article className={overdue ? "dose-row border-destructive/25 bg-destructive-soft/55" : "dose-row"}><span className={overdue ? "grid size-11 shrink-0 place-items-center rounded-lg bg-destructive-soft text-destructive" : "grid size-11 shrink-0 place-items-center rounded-lg bg-accent/25 text-accent-foreground"}>{overdue ? <AlertTriangle size={19} /> : <HeartPulse size={19} />}</span><div className="min-w-0 flex-1"><h3 className="truncate font-display font-semibold">{medicine.name}</h3><p className="mt-1 text-sm text-muted-foreground">{medicine.memberName} · at {medicine.scheduledTimes?.map(formatTimeStr).join(', ')} · {medicine.stockAvailable} left</p></div><div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end"><span className={overdue ? "status-chip bg-destructive-soft text-destructive" : "status-chip bg-primary/10 text-primary"}>{overdue ? "Overdue" : doseTime(medicine.nextDoseTime)}</span><Button disabled={empty || taking} onClick={take}>{empty ? "Out of stock" : taking ? "Logging…" : "Log dose"}</Button></div></article>;
+  
+  async function take() { 
+    setTaking(true); 
+    try { 
+      const response = await fetch(`${API}/medicine/${medicine.id}/take`, { method: "PUT" }); 
+      if (!response.ok) throw new Error(); 
+      await onLogged(); 
+    } finally { setTaking(false); } 
+  }
+
+  return (
+    <article className={`group flex items-center justify-between rounded-xl border p-4 transition-all hover:shadow-sm ${overdue ? "border-red-200 bg-red-50/50" : "border-zinc-200 bg-white"}`}>
+      <div className="flex items-center gap-4 min-w-0">
+        <div className={`grid size-12 shrink-0 place-items-center rounded-lg ${overdue ? "bg-red-100 text-red-600" : "bg-zinc-100 text-zinc-600"}`}>
+          {overdue ? <AlertTriangle size={20} /> : <Clock size={20} />}
+        </div>
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-semibold text-zinc-900">{medicine.name}</h3>
+          <p className="mt-0.5 truncate text-sm text-zinc-500">
+            <span className="font-medium text-zinc-700">{medicine.memberName}</span> • {medicine.scheduledTimes?.join(", ") || "No times set"}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 sm:gap-4">
+        <span className={`hidden text-sm font-medium sm:block ${overdue ? "text-red-600" : "text-zinc-500"}`}>
+          {overdue ? "Overdue" : doseTime(medicine.nextDoseTime)}
+        </span>
+        <Button variant="ghost" size="icon" onClick={() => onEdit(medicine)} className="h-9 w-9 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100" title="Edit Schedule">
+          <Pencil size={15} />
+        </Button>
+        <Button 
+          disabled={empty || taking} 
+          onClick={take}
+          variant={overdue ? "destructive" : "outline"}
+          className={!overdue ? "border-zinc-200 text-zinc-700 hover:bg-zinc-50" : ""}
+        >
+          {empty ? "Out of stock" : taking ? "Logging…" : "Log Dose"}
+        </Button>
+      </div>
+    </article>
+  );
 }
 
-function EmptyState({ onAdd }: { onAdd: () => void }) { return <div className="rounded-lg border border-dashed border-border px-5 py-12 text-center"><span className="mx-auto grid size-12 place-items-center rounded-full bg-accent/20 text-accent-foreground"><HeartPulse size={21} /></span><h3 className="mt-4 font-display font-semibold">A clear day starts here</h3><p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">Add a family member and their medicine to build today's schedule.</p><Button className="mt-5" onClick={onAdd}><Plus size={17} /> Add first item</Button></div>; }
+function EmptyState({ onAdd }: { onAdd: () => void }) { 
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 bg-zinc-50 py-16">
+      <div className="grid size-12 place-items-center rounded-full bg-zinc-200/50 text-zinc-500">
+        <Pill size={20} />
+      </div>
+      <h3 className="mt-4 text-sm font-semibold text-zinc-900">No medications scheduled</h3>
+      <p className="mt-1 max-w-sm text-center text-sm text-zinc-500">Add a family member and their prescriptions to generate the daily schedule.</p>
+      <Button className="mt-6 bg-zinc-900 hover:bg-zinc-800" onClick={onAdd}>
+        <Plus size={16} className="mr-2" /> Add First Item
+      </Button>
+    </div>
+  ); 
+}
 
-function CareDialog({ kind, members, selectedMember, onClose, onSaved }: { kind: "member" | "medicine" | "report"; members: FamilyMember[]; selectedMember: string | number | null; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(""); 
+function CareDialog({ kind, members, selectedMember, medicineToEdit, onClose, onSaved }: { kind: "member" | "medicine" | "edit-medicine"; members: FamilyMember[]; selectedMember: string | number | null; medicineToEdit?: Medicine; onClose: () => void; onSaved: () => void }) {
+  const isEditing = kind === "edit-medicine";
+  
+  const [name, setName] = useState(isEditing ? (medicineToEdit?.name || "") : ""); 
   const [memberId, setMemberId] = useState(String(selectedMember ?? members[0]?.id ?? "")); 
-  const [stock, setStock] = useState("30"); 
-  const [times, setTimes] = useState<string[]>(["08:00"]); // Array of times!
-  const [file, setFile] = useState<File | null>(null);
+  const [stock, setStock] = useState(isEditing ? String(medicineToEdit?.stockAvailable || 0) : "30"); 
+  
+  // Dynamic array of time strings for Scheduled Doses
+  const [times, setTimes] = useState<string[]>(isEditing && medicineToEdit?.scheduledTimes?.length ? medicineToEdit.scheduledTimes : ["08:00"]);
+  
   const [saving, setSaving] = useState(false); 
   const [error, setError] = useState("");
+  
+  function updateTime(index: number, value: string) {
+    const newTimes = [...times];
+    newTimes[index] = value;
+    setTimes(newTimes);
+  }
 
-  const updateTime = (index: number, val: string) => { const newTimes = [...times]; newTimes[index] = val; setTimes(newTimes); };
-  const removeTime = (index: number) => setTimes(times.filter((_, i) => i !== index));
+  function addTime() { setTimes([...times, "12:00"]); }
+  function removeTime(index: number) { setTimes(times.filter((_, i) => i !== index)); }
 
   async function save(event: FormEvent<HTMLFormElement>) { 
     event.preventDefault(); 
@@ -171,88 +277,106 @@ function CareDialog({ kind, members, selectedMember, onClose, onSaved }: { kind:
     
     try { 
       const userId = localStorage.getItem("userId"); 
+      
       let response;
-
-      if (kind === "report") {
-        if (!file || !memberId) throw new Error("File and member are required");
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("familyMemberId", memberId);
-        
-        response = await fetch(`${API}/report`, { method: "POST", body: formData });
+      if (kind === "member") {
+        response = await fetch(`${API}/family`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, name }) }); 
+      } else if (isEditing && medicineToEdit) {
+        // Hitting the new PUT route
+        response = await fetch(`${API}/medicine/${medicineToEdit.id}`, { 
+          method: "PUT", 
+          headers: { "Content-Type": "application/json" }, 
+          body: JSON.stringify({ stockAvailable: Number(stock), scheduledTimes: times }) 
+        });
       } else {
-        const payload = kind === "member" 
-          ? { userId, name } 
-          : { familyMemberId: memberId, name, stockAvailable: Number(stock), scheduledTimes: times.filter(t => t !== "") }; // Sending array!
-          
-        response = await fetch(kind === "member" ? `${API}/family` : `${API}/medicine`, { 
+        response = await fetch(`${API}/medicine`, { 
           method: "POST", 
           headers: { "Content-Type": "application/json" }, 
-          body: JSON.stringify(payload) 
-        }); 
+          body: JSON.stringify({ familyMemberId: memberId, name, stockAvailable: Number(stock), scheduledTimes: times }) 
+        });
       }
 
       if (!response.ok) throw new Error(); 
       onSaved(); 
-    } catch { setError("We couldn't save this. Please check the details and retry."); } 
-    finally { setSaving(false); } 
+    } catch { 
+      setError("We couldn't save this. Please check the details and retry."); 
+    } finally { 
+      setSaving(false); 
+    } 
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-overlay px-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="dialog-title" className="glass-panel w-full max-w-md bg-popover p-6 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-zinc-900/40 px-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section role="dialog" className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between">
-          <div><p className="text-sm font-semibold text-primary">Vitals</p><h2 id="dialog-title" className="mt-1 font-display text-xl font-bold">Add {kind === "member" ? "family member" : kind === "medicine" ? "medicine" : "report"}</h2></div>
-          <Button variant="ghost" aria-label="Close" onClick={onClose} className="size-9 min-h-9 px-0"><X size={18} /></Button>
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-zinc-900">
+              {kind === "member" ? "Add Profile" : isEditing ? "Edit Medicine Schedule" : "Add Medicine"}
+            </h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {isEditing ? `Updating ${medicineToEdit?.name}` : "Enter the details below to update your records."}
+            </p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 text-zinc-500">
+            <X size={16} />
+          </Button>
         </div>
         
-        {error && <p className="mt-4 rounded-lg bg-destructive-soft p-3 text-sm text-destructive">{error}</p>}
+        {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-medium text-red-600">{error}</p>}
         
         <form onSubmit={save} className="mt-6 space-y-4">
-          {(kind === "medicine" || kind === "report") && (
-            <label className="block text-sm font-semibold">For family member
-              <select value={memberId} onChange={(e) => setMemberId(e.target.value)} className="field mt-2">
+          {kind === "medicine" && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-900">For family member</label>
+              <select value={memberId} onChange={(e) => setMemberId(e.target.value)} className="flex h-10 w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2">
                 {members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
               </select>
-            </label>
+            </div>
+          )}
+          
+          {!isEditing && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-900">{kind === "member" ? "Name" : "Medicine name"}</label>
+              <input required value={name} onChange={(e) => setName(e.target.value)} className="flex h-10 w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2" placeholder={kind === "member" ? "e.g. Maya" : "e.g. Metformin 500mg"} />
+            </div>
           )}
 
-          {kind !== "report" && (
-            <label className="block text-sm font-semibold">{kind === "member" ? "Name" : "Medicine name"}
-              <input required value={name} onChange={(e) => setName(e.target.value)} className="field mt-2" placeholder={kind === "member" ? "e.g. Maya" : "e.g. Metformin 500mg"} />
-            </label>
-          )}
+          {kind !== "member" && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-zinc-900">Pills in stock</label>
+                <input required min="0" type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="flex h-10 w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2" />
+              </div>
 
-          {kind === "report" && (
-            <label className="block text-sm font-semibold">Upload document
-              <input type="file" required onChange={(e) => setFile(e.target.files?.[0] || null)} className="field mt-2 py-2" accept=".pdf,.png,.jpg,.jpeg" />
-            </label>
-          )}
-
-          {kind === "medicine" && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block text-sm font-semibold">Pills in stock
-                <input required min="0" type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="field mt-2" />
-              </label>
-              <div className="block text-sm font-semibold">Dose Times
-                <div className="space-y-2 mt-2">
-                  {times.map((t, index) => (
-                    <div key={index} className="flex gap-2">
-                      <input required type="time" value={t} onChange={(e) => updateTime(index, e.target.value)} className="field flex-1" />
-                      {times.length > 1 && <Button variant="ghost" type="button" onClick={() => removeTime(index)} className="px-2 text-destructive"><X size={16} /></Button>}
-                    </div>
-                  ))}
-                </div>
-                <Button variant="ghost" type="button" onClick={() => setTimes([...times, "12:00"])} className="mt-2 text-xs h-7 px-2"><Plus size={14} className="mr-1" /> Add another time</Button>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-zinc-900">Dose Times</label>
+                {times.map((time, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input 
+                      type="time" 
+                      value={time} 
+                      onChange={(e) => updateTime(idx, e.target.value)} 
+                      required 
+                      className="flex h-10 w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2" 
+                    />
+                    {times.length > 1 && (
+                      <Button type="button" variant="ghost" size="icon" onClick={() => removeTime(idx)} className="h-10 w-10 shrink-0 text-zinc-400 hover:text-red-600 hover:bg-red-50">
+                        <X size={16} />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button type="button" variant="ghost" size="sm" onClick={addTime} className="mt-2 text-zinc-500 hover:text-zinc-900">
+                  <Plus size={14} className="mr-1" /> Add another time
+                </Button>
               </div>
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={saving || ((kind === "medicine" || kind === "report") && !memberId)}>
-              <Check size={16} className="mr-2" />
-              {saving ? "Saving…" : "Save"}
+          <div className="flex justify-end gap-3 pt-4 border-t border-zinc-100 mt-6">
+            <Button type="button" variant="ghost" onClick={onClose} className="text-zinc-600">Cancel</Button>
+            <Button type="submit" disabled={saving || (kind === "medicine" && !memberId)} className="bg-zinc-900 hover:bg-zinc-800">
+              {saving ? "Saving…" : "Save Record"}
             </Button>
           </div>
         </form>
