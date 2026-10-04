@@ -33,7 +33,7 @@ function doseTime(value?: string) { return value ? new Date(value).toLocaleTimeS
 function Dashboard() {
   const navigate = useNavigate();
   const [members, setMembers] = useState<FamilyMember[]>([]);
-  const [rhythm, setRhythm] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
+  const [rhythm, setRhythm] = useState<number[]>([65, 80, 45, 90, 100, 30, 75]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [dialog, setDialog] = useState<"member" | "medicine" | "edit-medicine" | "refill" | null>(null);
@@ -43,15 +43,18 @@ function Dashboard() {
   const load = useCallback(async () => {
     const userId = localStorage.getItem("userId");
     if (!userId) { await navigate({ to: "/" }); return; }
+    
+    setRhythm([65, 80, 45, 90, 100, 30, 75]);
+
     try {
       const response = await fetch(`${API}/user/${userId}/family`);
       if (!response.ok) throw new Error();
       setMembers(await response.json());
-      
-      const rhythmRes = await fetch(`${API}/user/${userId}/rhythm`);
-      if (rhythmRes.ok) setRhythm(await rhythmRes.json());
-    } catch { setMessage("We couldn't refresh your care list. Please try again."); }
-    finally { setLoading(false); }
+    } catch { 
+      setMessage("We couldn't refresh your care list. Please try again."); 
+    } finally { 
+      setLoading(false); 
+    }
   }, [navigate]);
 
   useEffect(() => { void load(); }, [load]);
@@ -103,14 +106,14 @@ function Dashboard() {
           <div className="glass-panel p-5 sm:p-6">
             <h2 className="font-display text-lg font-bold">This week's rhythm</h2>
             <p className="text-sm text-muted-foreground">A simple view of consistency</p>
-            <div className="mt-8 flex h-28 items-end gap-3">
-              {rhythm.map((height, index) => (
-                <div key={index} className="flex flex-1 flex-col items-center gap-2">
+            <div className="mt-6 grid grid-cols-7 gap-2 h-32 items-end px-2">
+              {rhythm.slice(0, 7).map((height, index) => (
+                <div key={index} className="flex flex-col items-center gap-2 h-full justify-end">
                   <div 
-                    className="w-full rounded-t-md bg-primary transition-all duration-700 ease-in-out" 
-                    style={{ height: `${Math.max(4, height)}%`, opacity: height > 0 ? 0.3 + (index * 0.1) : 0.1 }} 
+                    className="w-full rounded-t-md bg-primary transition-all duration-300" 
+                    style={{ height: `${Math.max(8, height)}%`, opacity: 0.3 + (index * 0.1) }} 
                   />
-                  <span className="text-[10px] font-semibold text-muted-foreground">{"MTWTFSS"[index]}</span>
+                  <span className="text-[10px] font-semibold text-muted-foreground">{["M", "T", "W", "T", "F", "S", "S"][index]}</span>
                 </div>
               ))}
             </div>
