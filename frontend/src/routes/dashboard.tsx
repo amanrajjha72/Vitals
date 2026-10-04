@@ -1,11 +1,18 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Check, HeartPulse, LogOut, Plus, X, Pill, Clock } from "lucide-react";
+import { AlertTriangle, Check, HeartPulse, LogOut, Plus, X, Pill, Clock, Pencil } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 
 const API = "https://vitals-bget.onrender.com";
 
-type Medicine = { id: string | number; name: string; stockAvailable: number; scheduledTimes: string[]; nextDoseTime?: string; familyMemberId?: string | number };
+type Medicine = { 
+  id: string | number; 
+  name: string; 
+  stockAvailable: number; 
+  scheduledTimes: string[]; 
+  nextDoseTime?: string; 
+  familyMemberId?: string | number 
+};
 type FamilyMember = { id: string | number; name: string; medicines?: Medicine[] };
 
 export const Route = createFileRoute("/dashboard")({
@@ -129,9 +136,15 @@ function DoseRow({ medicine, onLogged, onEdit, onRefill }: { medicine: Medicine 
       </div>
       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <span className={`hidden text-sm font-medium md:block mr-2 ${overdue ? "text-red-600" : "text-zinc-500"}`}>{overdue ? "Overdue" : doseTime(medicine.nextDoseTime)}</span>
-        <Button variant="outline" size="sm" onClick={() => onRefill(medicine)} className="border-zinc-200 text-zinc-600">Refill</Button>
-        <Button variant="outline" size="sm" onClick={() => onEdit(medicine)} className="border-zinc-200 text-zinc-600">Edit</Button>
+        
+        {/* Refill stays on the left */}
+        <Button variant="outline" size="sm" onClick={() => onRefill(medicine)} className="border-zinc-200 text-zinc-600">Refill Stock</Button>
+        
+        {/* Log Dose is in the middle */}
         <Button disabled={empty || taking} onClick={take} variant={overdue ? "destructive" : "outline"} className={!overdue ? "border-zinc-200 text-zinc-800 hover:bg-zinc-100" : ""}>{empty ? "Empty" : taking ? "..." : "Log Dose"}</Button>
+
+        {/* Update Time is explicitly on the right */}
+        <Button variant="secondary" size="sm" onClick={() => onEdit(medicine)} className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200">Update Time</Button>
       </div>
     </article>
   );
@@ -171,7 +184,7 @@ function CareDialog({ kind, members, selectedMember, medicineToEdit, onClose, on
       <section className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-zinc-900">{kind === "member" ? "Add Profile" : isEditing ? "Edit Schedule" : isRefill ? "Refill Medicine" : "Add Medicine"}</h2>
+            <h2 className="text-xl font-bold tracking-tight text-zinc-900">{kind === "member" ? "Add Profile" : isEditing ? "Update Time" : isRefill ? "Refill Medicine" : "Add Medicine"}</h2>
             <p className="mt-1 text-sm text-zinc-500">{isRefill ? `Add stock to ${medicineToEdit?.name}` : "Enter the details below."}</p>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 text-zinc-500"><X size={16} /></Button>
@@ -181,21 +194,21 @@ function CareDialog({ kind, members, selectedMember, medicineToEdit, onClose, on
         
         <form onSubmit={save} className="mt-6 space-y-4">
           {kind === "medicine" && (
-            <div className="space-y-1.5"><label className="text-sm font-medium text-zinc-900">For family member</label><select value={memberId} onChange={(e) => setMemberId(e.target.value)} className="flex h-10 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm">{members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+            <div className="space-y-1.5"><label className="text-sm font-medium text-zinc-900">For family member</label><select value={memberId} onChange={(e) => setMemberId(e.target.value)} className="flex h-10 w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm">{members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
           )}
           
           {(kind === "member" || kind === "medicine") && (
-            <div className="space-y-1.5"><label className="text-sm font-medium text-zinc-900">{kind === "member" ? "Name" : "Medicine name"}</label><input required value={name} onChange={(e) => setName(e.target.value)} className="flex h-10 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" placeholder={kind === "member" ? "e.g. Maya" : "e.g. Metformin"} /></div>
+            <div className="space-y-1.5"><label className="text-sm font-medium text-zinc-900">{kind === "member" ? "Name" : "Medicine name"}</label><input required value={name} onChange={(e) => setName(e.target.value)} className="flex h-10 w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm" placeholder={kind === "member" ? "e.g. Maya" : "e.g. Metformin"} /></div>
           )}
 
           {kind !== "member" && (
             <div className="space-y-4">
-              <div className="space-y-1.5"><label className="text-sm font-medium text-zinc-900">{isRefill ? "Amount to add" : "Pills in stock"}</label><input required min="1" type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="flex h-10 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" /></div>
+              <div className="space-y-1.5"><label className="text-sm font-medium text-zinc-900">{isRefill ? "Amount to add" : "Pills in stock"}</label><input required min="1" type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="flex h-10 w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm" /></div>
               
               {!isRefill && (
                 <div className="space-y-2"><label className="text-sm font-medium text-zinc-900">Dose Times</label>
                   {times.map((time, idx) => (
-                    <div key={idx} className="flex items-center gap-2"><input type="time" value={time} onChange={(e) => { const nt = [...times]; nt[idx] = e.target.value; setTimes(nt); }} required className="flex h-10 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />{times.length > 1 && (<Button type="button" variant="ghost" size="icon" onClick={() => setTimes(times.filter((_, i) => i !== idx))} className="h-10 w-10 shrink-0 text-red-500 hover:bg-red-50"><X size={16} /></Button>)}</div>
+                    <div key={idx} className="flex items-center gap-2"><input type="time" value={time} onChange={(e) => { const nt = [...times]; nt[idx] = e.target.value; setTimes(nt); }} required className="flex h-10 w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm" />{times.length > 1 && (<Button type="button" variant="ghost" size="icon" onClick={() => setTimes(times.filter((_, i) => i !== idx))} className="h-10 w-10 shrink-0 text-red-500 hover:bg-red-50"><X size={16} /></Button>)}</div>
                   ))}
                   <Button type="button" variant="ghost" size="sm" onClick={() => setTimes([...times, "12:00"])} className="mt-2 text-zinc-500"><Plus size={14} className="mr-1" /> Add another time</Button>
                 </div>
@@ -204,7 +217,7 @@ function CareDialog({ kind, members, selectedMember, medicineToEdit, onClose, on
           )}
 
           <div className="flex justify-end gap-3 pt-4 border-t border-zinc-100 mt-6">
-            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={onClose} className="text-zinc-600">Cancel</Button>
             <Button type="submit" disabled={saving} className="bg-zinc-900 hover:bg-zinc-800 text-white">{saving ? "Saving…" : "Save Record"}</Button>
           </div>
         </form>
