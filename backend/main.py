@@ -199,21 +199,17 @@ async def take_dose(medicine_id: str):
     if not medicine: raise HTTPException(404, "Medicine not found")
     if medicine.stockAvailable <= 0: raise HTTPException(400, "Out of stock")
 
-    current_utc = datetime.now(timezone.utc)
-    if medicine.nextDoseTime:
-        # Added a 30-minute grace period so users can log slightly early without being blocked
-        grace_period_start = medicine.nextDoseTime - timedelta(minutes=30)
-        if current_utc < grace_period_start:
-            time_left = medicine.nextDoseTime - current_utc
-            raise HTTPException(400, f"Too early. Next dose in {int(time_left.total_seconds()) // 3600}h {(int(time_left.total_seconds()) % 3600) // 60}m.")
-            
+    # Always calculate the next upcoming dose based on right now
     now_ist = datetime.now(IST)
-    # Fast-forward search by 1 hour to prevent re-selecting the exact same dose if logged early
-    search_time = now_ist + timedelta(hours=1)
-    next_dose_ist = get_next_dose(medicine.scheduledTimes, search_time)
+    next_dose_ist = get_next_dose(medicine.scheduledTimes, now_ist)
     
-    return await db.medicine.update(where={"id": medicine_id}, data={"stockAvailable": medicine.stockAvailable - 1, "nextDoseTime": next_dose_ist.astimezone(timezone.utc)})
-    
+    return await db.medicine.update(
+        where={"id": medicine_id}, 
+        data={
+            "stockAvailable": medicine.stockAvailable - 1, 
+            "nextDoseTime": next_dose_ist.astimezone(timezone.utc)
+        }
+    )
 @app.post("/report")
 async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File(...)):
     try:
