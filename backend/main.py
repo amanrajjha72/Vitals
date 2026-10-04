@@ -30,7 +30,9 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # --- HELPER: GET NEXT DOSE TIME ---
 def get_next_dose(times_list: List[str], current_ist: datetime) -> datetime:
-    """Finds the next chronologically upcoming time from a list of times."""
+    if not times_list:
+        return current_ist + timedelta(days=1)
+        
     sorted_times = sorted(times_list)
     
     for t in sorted_times:
@@ -68,41 +70,33 @@ class MedicineCreate(BaseModel):
     name: str
     stockAvailable: int
     scheduledTimes: List[str]
-    class MedicineCreate(BaseModel):
-    familyMemberId: str
-    name: str
-    stockAvailable: int
-    scheduledTimes: List[str]
 
-# --- ADD THIS NEW SCHEMA ---
 class MedicineUpdate(BaseModel):
     stockAvailable: int
     scheduledTimes: List[str]
 
-# --- EMAIL NOTIFICATION SERVICE (RESEND HTTP API) ---
+# --- MEMORY CACHE FOR ALERTS ---
+# Tracks sent alerts so the scheduler doesn't spam emails, WITHOUT advancing the user's schedule
+alerted_doses = {} 
+
 def send_alert_email(patient_name: str, medicine_name: str):
     api_key = os.getenv("RESEND_API_KEY")
     receiver_email = os.getenv("EMAIL_SENDER") 
     
-    if not api_key or not receiver_email: 
-        return
+    if not api_key or not receiver_email: return
         
     try:
         data = json.dumps({
             "from": "Acme <onboarding@resend.dev>",
             "to": [receiver_email],
             "subject": f"🚨 URGENT: Missed Medication for {patient_name}",
-            "text": f"Patient {patient_name} is more than 10 minutes late taking their scheduled dose of {medicine_name}."
+            "text": f"Patient {patient_name} is late taking their scheduled dose of {medicine_name}."
         }).encode("utf-8")
         
         req = urllib.request.Request(
             "https://api.resend.com/emails",
             data=data,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "User-Agent": "Python-Vitals-App"
-            }
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "User-Agent": "Python-Vitals-App"}
         )
         urllib.request.urlopen(req)
     except Exception as e:
@@ -115,18 +109,19 @@ async def check_missed_doses():
     try:
         late_medicines = await db.medicine.find_many(where={"nextDoseTime": {"lte": cutoff_time}}, include={"familyMember": True})
         for med in late_medicines:
+            # If we already emailed the user for this specific missed timestamp, ignore it
+            last_alert = alerted_doses.get(med.id)
+            if last_alert == med.nextDoseTime:
+                continue 
+                
             patient_name = med.familyMember.name if med.familyMember else "Unknown"
             send_alert_email(patient_name, med.name)
             
-            now_ist = datetime.now(IST)
-            next_dose_ist = get_next_dose(med.scheduledTimes, now_ist)
+            # Mark this dose as alerted, but DO NOT advance the schedule. 
+            # This allows the user to log it late.
+            alerted_doses[med.id] = med.nextDoseTime
             
-            await db.medicine.update(
-                where={"id": med.id}, 
-                data={"nextDoseTime": next_dose_ist.astimezone(timezone.utc)}
-            )
-    except Exception as e:
-        print(f"Scheduler error: {e}")
+    except Exception as e: print(f"Scheduler error: {e}")
 
 # --- MIDDLEWARE & OAUTH ---
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "fallback-key"))
@@ -178,66 +173,46 @@ async def add_family_member(data: FamilyMemberCreate):
 async def add_medicine(data: MedicineCreate):
     existing = next((m for m in await db.medicine.find_many(where={"familyMemberId": data.familyMemberId}) if m.name.lower() == data.name.strip().lower()), None)
     
-    now_ist = datetime.now(IST)
-    next_dose_ist = get_next_dose(data.scheduledTimes, now_ist)
-    next_dose_utc = next_dose_ist.astimezone(timezone.utc)
-
     if existing: 
+        # REFILL LOGIC: Only add stock, do NOT overwrite the existing scheduled times!
         return await db.medicine.update(
             where={"id": existing.id}, 
-            data={"stockAvailable": existing.stockAvailable + data.stockAvailable, "scheduledTimes": data.scheduledTimes, "nextDoseTime": next_dose_utc}
+            data={"stockAvailable": existing.stockAvailable + data.stockAvailable}
         )
-    return await db.medicine.create(data={"name": data.name.strip(), "stockAvailable": data.stockAvailable, "scheduledTimes": data.scheduledTimes, "nextDoseTime": next_dose_utc, "familyMemberId": data.familyMemberId})
+        
+    now_ist = datetime.now(IST)
+    next_dose_ist = get_next_dose(data.scheduledTimes, now_ist)
+    return await db.medicine.create(data={"name": data.name.strip(), "stockAvailable": data.stockAvailable, "scheduledTimes": data.scheduledTimes, "nextDoseTime": next_dose_ist.astimezone(timezone.utc), "familyMemberId": data.familyMemberId})
+
 @app.put("/medicine/{medicine_id}")
 async def edit_medicine(medicine_id: str, data: MedicineUpdate):
     medicine = await db.medicine.find_unique(where={"id": medicine_id})
     if not medicine: raise HTTPException(404, "Medicine not found")
 
     now_ist = datetime.now(IST)
-    # Recalculate the next chronologically upcoming dose based on the new times
     next_dose_ist = get_next_dose(data.scheduledTimes, now_ist)
-    
-    return await db.medicine.update(
-        where={"id": medicine_id},
-        data={
-            "stockAvailable": data.stockAvailable,
-            "scheduledTimes": data.scheduledTimes,
-            "nextDoseTime": next_dose_ist.astimezone(timezone.utc)
-        }
-    )
+    return await db.medicine.update(where={"id": medicine_id}, data={"stockAvailable": data.stockAvailable, "scheduledTimes": data.scheduledTimes, "nextDoseTime": next_dose_ist.astimezone(timezone.utc)})
 
-@app.get("/test-email")
-def force_test_email():
-    api_key = os.getenv("RESEND_API_KEY")
-    receiver_email = os.getenv("EMAIL_SENDER")
+@app.put("/medicine/{medicine_id}/take")
+async def take_dose(medicine_id: str):
+    medicine = await db.medicine.find_unique(where={"id": medicine_id})
+    if not medicine: raise HTTPException(404, "Medicine not found")
+    if medicine.stockAvailable <= 0: raise HTTPException(400, "Out of stock")
+
+    current_utc = datetime.now(timezone.utc)
+    if medicine.nextDoseTime:
+        # Added a 30-minute grace period so users can log slightly early without being blocked
+        grace_period_start = medicine.nextDoseTime - timedelta(minutes=30)
+        if current_utc < grace_period_start:
+            time_left = medicine.nextDoseTime - current_utc
+            raise HTTPException(400, f"Too early. Next dose in {int(time_left.total_seconds()) // 3600}h {(int(time_left.total_seconds()) % 3600) // 60}m.")
+            
+    now_ist = datetime.now(IST)
+    # Fast-forward search by 1 hour to prevent re-selecting the exact same dose if logged early
+    search_time = now_ist + timedelta(hours=1)
+    next_dose_ist = get_next_dose(medicine.scheduledTimes, search_time)
     
-    if not api_key or not receiver_email:
-        return {"status": "failed", "reason": "RESEND_API_KEY or EMAIL_SENDER is missing on Render."}
-        
-    try:
-        data = json.dumps({
-            "from": "Acme <onboarding@resend.dev>",
-            "to": [receiver_email],
-            "subject": "Vitals Connection Test",
-            "text": "Success! Your FastAPI server successfully connected via Resend HTTP API!"
-        }).encode("utf-8")
-        
-        req = urllib.request.Request(
-            "https://api.resend.com/emails",
-            data=data,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "User-Agent": "Python-Vitals-App"
-            }
-        )
-        urllib.request.urlopen(req)
-        return {"status": "success", "message": f"Email delivered via HTTP to {receiver_email}"}
-    except urllib.error.HTTPError as e:
-        error_details = e.read().decode("utf-8")
-        return {"status": "failed", "reason": f"Resend API Error {e.code}: {error_details}"}
-    except Exception as e:
-        return {"status": "failed", "reason": f"General error: {str(e)}"}
+    return await db.medicine.update(where={"id": medicine_id}, data={"stockAvailable": medicine.stockAvailable - 1, "nextDoseTime": next_dose_ist.astimezone(timezone.utc)})
     
 @app.post("/report")
 async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File(...)):
@@ -248,8 +223,6 @@ async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File
         return {"message": "Success"}
     except Exception as e: raise HTTPException(500, str(e))
 
-
-# --- TEMPORARY WIPE ENDPOINT ---
 @app.api_route("/admin/wipe-database", methods=["GET", "POST", "DELETE"])
 async def wipe_database():
     try:
@@ -258,5 +231,4 @@ async def wipe_database():
         await db.familymember.delete_many()
         await db.user.delete_many()
         return {"status": "success", "message": "All database records have been completely wiped."}
-    except Exception as e:
-        return {"status": "failed", "reason": str(e)}
+    except Exception as e: return {"status": "failed", "reason": str(e)}
