@@ -118,8 +118,13 @@ function DoseRow({ medicine, onLogged, onEdit, onRefill }: { medicine: Medicine 
         throw new Error(data.detail || "Failed to log");
       }
       await onLogged(); 
-    } catch (e: any) { setErrorMsg(e.message); setTimeout(() => setErrorMsg(""), 3000); } 
-    finally { setTaking(false); } 
+    } catch (error) { 
+      const msg = error instanceof Error ? error.message : "Failed to log";
+      setErrorMsg(msg); 
+      setTimeout(() => setErrorMsg(""), 3000); 
+    } finally { 
+      setTaking(false); 
+    } 
   }
 
   return (
