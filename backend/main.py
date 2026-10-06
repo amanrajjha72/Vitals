@@ -1,4 +1,4 @@
-import os
+\import os
 import shutil
 import json
 import urllib.request
@@ -163,7 +163,6 @@ async def get_dashboard_data(user_id: str):
 
 @app.get("/user/{user_id}/rhythm")
 async def get_weekly_rhythm(user_id: str):
-    # 1. Get all medicines for this user's family
     family_members = await db.familymember.find_many(
         where={"userId": user_id},
         include={"medicines": True}
@@ -174,18 +173,15 @@ async def get_weekly_rhythm(user_id: str):
         if fm.medicines:
             medicines.extend(fm.medicines)
             
-    # Calculate how many doses total should be taken per day
     daily_expected = sum(len(m.scheduledTimes) for m in medicines if m.scheduledTimes)
     if daily_expected == 0:
         return [0, 0, 0, 0, 0, 0, 0]
         
     medicine_ids = [m.id for m in medicines]
     
-    # 2. Get start of current week (Monday)
     now_ist = datetime.now(IST)
     start_of_week = (now_ist - timedelta(days=now_ist.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     
-    # 3. Query all dose logs for the current week
     logs = await db.doselog.find_many(
         where={
             "medicineId": {"in": medicine_ids},
@@ -193,17 +189,16 @@ async def get_weekly_rhythm(user_id: str):
         }
     )
     
-    # 4. Group by day and calculate percentages
     daily_counts = {i: 0 for i in range(7)}
     for log in logs:
         log_ist = log.takenAt.astimezone(IST)
-        day_index = log_ist.weekday() # 0 = Monday, 6 = Sunday
+        day_index = log_ist.weekday() 
         daily_counts[day_index] += 1
         
     rhythm = []
     for i in range(7):
         if i > now_ist.weekday():
-            rhythm.append(0) # Future days in the week have 0 logs
+            rhythm.append(0) 
         else:
             pct = min(100, int((daily_counts[i] / daily_expected) * 100))
             rhythm.append(pct)
@@ -262,7 +257,6 @@ async def take_dose(medicine_id: str):
     now_ist = datetime.now(IST)
     next_dose_ist = get_next_dose(medicine.scheduledTimes, now_ist)
     
-    # 1. Log the dose in the new DoseLog table
     await db.doselog.create(
         data={
             "medicineId": medicine_id, 
@@ -270,7 +264,6 @@ async def take_dose(medicine_id: str):
         }
     )
     
-    # 2. Deduct stock and set next time
     return await db.medicine.update(
         where={"id": medicine_id}, 
         data={
@@ -278,15 +271,36 @@ async def take_dose(medicine_id: str):
             "nextDoseTime": next_dose_ist.astimezone(timezone.utc)
         }
     )
-    
-@app.post("/report")
-async def upload_report(familyMemberId: str = Form(...), file: UploadFile = File(...)):
+
+# --- NEW REPORT UPLOAD ENDPOINT ---
+@app.post("/family/{member_id}/report")
+async def upload_report(member_id: str, report: UploadFile = File(...)):
     try:
-        file_path = f"uploads/reports/{file.filename}"
-        with open(file_path, "wb") as buffer: shutil.copyfileobj(file.file, buffer)
-        await db.report.create(data={"filename": file.filename, "fileUrl": f"/uploads/reports/{file.filename}", "familyMemberId": familyMemberId})
+        file_path = f"uploads/reports/{report.filename}"
+        with open(file_path, "wb") as buffer: 
+            shutil.copyfileobj(report.file, buffer)
+            
+        await db.report.create(data={
+            "filename": report.filename, 
+            "fileUrl": f"/uploads/reports/{report.filename}", 
+            "familyMemberId": member_id
+        })
         return {"message": "Success"}
-    except Exception as e: raise HTTPException(500, str(e))
+    except Exception as e: 
+        raise HTTPException(500, str(e))
+
+# --- NEW REPORT VIEW ENDPOINT ---
+@app.get("/family/{member_id}/report")
+async def get_report(member_id: str):
+    reports = await db.report.find_many(where={"familyMemberId": member_id})
+    if not reports:
+        raise HTTPException(404, "No reports found for this member.")
+        
+    # Get the most recently uploaded report
+    latest_report = reports[-1]
+    
+    # Redirect to the static file path which FastAPI serves automatically
+    return RedirectResponse(url=latest_report.fileUrl)
 
 @app.api_route("/admin/wipe-database", methods=["GET", "POST", "DELETE"])
 async def wipe_database():
