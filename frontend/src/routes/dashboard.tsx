@@ -1,10 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Check, HeartPulse, LogOut, Plus, X } from "lucide-react";
+import { AlertTriangle, Check, HeartPulse, LogOut, Plus, X, FileText } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 
 const API = "https://vitals-bget.onrender.com";
 
+type Report = { id: string | number; filename: string; fileUrl: string; };
 type Medicine = { 
   id: string | number; 
   name: string; 
@@ -13,7 +14,7 @@ type Medicine = {
   nextDoseTime?: string;
   familyMemberId?: string | number;
 };
-type FamilyMember = { id: string | number; name: string; medicines?: Medicine[] };
+type FamilyMember = { id: string | number; name: string; medicines?: Medicine[]; reports?: Report[] };
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [
@@ -36,7 +37,7 @@ function Dashboard() {
   const [rhythm, setRhythm] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [dialog, setDialog] = useState<"member" | "medicine" | "edit-medicine" | "refill" | null>(null);
+  const [dialog, setDialog] = useState<"member" | "medicine" | "edit-medicine" | "refill" | "report" | null>(null);
   const [selectedMember, setSelectedMember] = useState<string | number | null>(null);
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
 
@@ -67,28 +68,6 @@ function Dashboard() {
   function openEdit(med: Medicine) { setSelectedMedicine(med); setDialog("edit-medicine"); }
   function openRefill(med: Medicine) { setSelectedMedicine(med); setDialog("refill"); }
   function logout() { localStorage.removeItem("userId"); void navigate({ to: "/" }); }
-
-  async function handleReportUpload(memberId: string | number, event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append("report", file);
-
-    try {
-      const response = await fetch(`${API}/family/${memberId}/report`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error("Upload failed");
-      
-      setMessage(`Report uploaded successfully for ${file.name}`);
-      void load();
-    } catch {
-      setMessage("Failed to upload the report. Please try again.");
-    }
-  }
 
   if (loading) return <main className="app-shell grid min-h-screen place-items-center"><div className="text-center"><span className="mx-auto grid size-12 place-items-center rounded-xl bg-primary text-primary-foreground"><HeartPulse className="animate-pulse" /></span><p className="mt-4 text-sm font-semibold text-muted-foreground">Preparing today&apos;s care…</p></div></main>;
 
@@ -125,27 +104,54 @@ function Dashboard() {
 
         <section id="family" className="mt-5 grid gap-5 lg:grid-cols-[1.25fr_.75fr]">
           <div className="glass-panel p-5 sm:p-6">
-            <div className="flex items-center justify-between gap-4"><div><h2 className="font-display text-lg font-bold">Family members</h2><p className="text-sm text-muted-foreground">Care at a glance</p></div><Button variant="secondary" onClick={() => setDialog("member")}><Plus size={17} /> Add member</Button></div>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="font-display text-lg font-bold">Family members</h2>
+                <p className="text-sm text-muted-foreground">Care at a glance</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setDialog("report")} disabled={!members.length}>
+                  <FileText size={16} className="mr-1.5" /> Add report
+                </Button>
+                <Button variant="secondary" onClick={() => setDialog("member")}>
+                  <Plus size={16} className="mr-1.5" /> Add member
+                </Button>
+              </div>
+            </div>
+            
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {members.map((member) => (
-                <div key={member.id} className="rounded-lg bg-glass-strong p-4 ring-1 ring-glass-border">
+                <div key={member.id} className="flex flex-col rounded-lg bg-glass-strong p-4 ring-1 ring-glass-border">
                   <div className="flex items-center gap-3">
                     <span className="grid size-10 place-items-center rounded-full bg-accent/25 text-sm font-bold text-accent-foreground">{initials(member.name)}</span>
-                    <div className="min-w-0"><h3 className="truncate font-display text-sm font-semibold">{member.name}</h3><p className="text-xs text-muted-foreground">{member.medicines?.length || 0} medicines</p></div>
+                    <div className="min-w-0">
+                      <h3 className="truncate font-display text-sm font-semibold">{member.name}</h3>
+                      <p className="text-xs text-muted-foreground">{member.medicines?.length || 0} medicines · {member.reports?.length || 0} reports</p>
+                    </div>
                   </div>
-                  <div className="mt-3 flex gap-2">
-                    <Button variant="ghost" className="flex-1 text-xs px-2" onClick={() => openMedicine(member.id)}>
-                      <Plus size={14} className="mr-1" /> Medicine
-                    </Button>
+                  
+                  <div className="mt-auto pt-4 space-y-2">
+                    {/* Render existing reports if any */}
+                    {member.reports && member.reports.length > 0 && (
+                      <div className="space-y-1 mb-2">
+                        {member.reports.map((report) => (
+                          <a 
+                            key={report.id} 
+                            href={`${API}${report.fileUrl}`} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="flex items-center gap-2 rounded-md bg-accent/10 px-3 py-2 text-xs font-medium text-primary hover:bg-accent/20 transition-colors ring-1 ring-primary/10"
+                          >
+                            <FileText size={14} className="shrink-0" />
+                            <span className="truncate">{report.filename}</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
                     
-                    <Button variant="outline" className="flex-1 text-xs px-2" onClick={() => window.open(`${API}/family/${member.id}/report`, "_blank")}>
-                      View Report
+                    <Button variant="ghost" className="w-full bg-muted/50 text-xs hover:bg-muted" onClick={() => openMedicine(member.id)}>
+                      <Plus size={14} className="mr-1" /> Add medicine
                     </Button>
-
-                    <label className="flex flex-1 cursor-pointer items-center justify-center rounded-md text-xs font-medium hover:bg-accent hover:text-accent-foreground">
-                      <Plus size={14} className="mr-1" /> Upload
-                      <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={(e) => handleReportUpload(member.id, e)} />
-                    </label>
                   </div>
                 </div>
               ))}
@@ -225,14 +231,16 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
   return <div className="rounded-lg border border-dashed border-border px-5 py-12 text-center"><span className="mx-auto grid size-12 place-items-center rounded-full bg-accent/20 text-accent-foreground"><HeartPulse size={21} /></span><h3 className="mt-4 font-display font-semibold">A clear day starts here</h3><p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">Add a family member and their medicine to build today&apos;s schedule.</p><Button className="mt-5" onClick={onAdd}><Plus size={17} /> Add first item</Button></div>; 
 }
 
-function CareDialog({ kind, members, selectedMember, medicineToEdit, onClose, onSaved }: { kind: "member" | "medicine" | "edit-medicine" | "refill"; members: FamilyMember[]; selectedMember: string | number | null; medicineToEdit?: Medicine; onClose: () => void; onSaved: () => void }) {
+function CareDialog({ kind, members, selectedMember, medicineToEdit, onClose, onSaved }: { kind: "member" | "medicine" | "edit-medicine" | "refill" | "report"; members: FamilyMember[]; selectedMember: string | number | null; medicineToEdit?: Medicine; onClose: () => void; onSaved: () => void }) {
   const isEditing = kind === "edit-medicine";
   const isRefill = kind === "refill";
+  const isReport = kind === "report";
   
   const [name, setName] = useState((isEditing || isRefill) ? (medicineToEdit?.name || "") : ""); 
   const [memberId, setMemberId] = useState(String(medicineToEdit?.familyMemberId ?? selectedMember ?? members[0]?.id ?? "")); 
   const [stock, setStock] = useState(isEditing ? String(medicineToEdit?.stockAvailable || 0) : isRefill ? "30" : "30"); 
   const [times, setTimes] = useState<string[]>(isEditing && medicineToEdit?.scheduledTimes?.length ? medicineToEdit.scheduledTimes : ["08:00"]);
+  const [file, setFile] = useState<File | null>(null);
   
   const [saving, setSaving] = useState(false); 
   const [error, setError] = useState("");
@@ -243,6 +251,11 @@ function CareDialog({ kind, members, selectedMember, medicineToEdit, onClose, on
       let response;
       if (kind === "member") {
         response = await fetch(`${API}/family`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: localStorage.getItem("userId"), name }) }); 
+      } else if (isReport) {
+        if (!file) throw new Error("Please select a file.");
+        const formData = new FormData();
+        formData.append("report", file);
+        response = await fetch(`${API}/family/${memberId}/report`, { method: "POST", body: formData });
       } else if (isEditing && medicineToEdit) {
         response = await fetch(`${API}/medicine/${medicineToEdit.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stockAvailable: Number(stock), scheduledTimes: times }) });
       } else {
@@ -250,7 +263,7 @@ function CareDialog({ kind, members, selectedMember, medicineToEdit, onClose, on
       }
       if (!response.ok) throw new Error(); 
       onSaved(); 
-    } catch { setError("We couldn't save this. Please retry."); } 
+    } catch (e: any) { setError(e.message || "We couldn't save this. Please retry."); } 
     finally { setSaving(false); } 
   }
 
@@ -260,7 +273,13 @@ function CareDialog({ kind, members, selectedMember, medicineToEdit, onClose, on
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-semibold text-primary">Vitals</p>
-            <h2 id="dialog-title" className="mt-1 font-display text-xl font-bold">{kind === "member" ? "Add family member" : isEditing ? "Update Time" : isRefill ? "Refill Medicine" : "Add medicine"}</h2>
+            <h2 id="dialog-title" className="mt-1 font-display text-xl font-bold">
+              {kind === "member" ? "Add family member" : 
+               isReport ? "Upload medical report" : 
+               isEditing ? "Update Time" : 
+               isRefill ? "Refill Medicine" : 
+               "Add medicine"}
+            </h2>
           </div>
           <Button variant="ghost" aria-label="Close" onClick={onClose} className="size-9 min-h-9 px-0"><X size={18} /></Button>
         </div>
@@ -268,11 +287,17 @@ function CareDialog({ kind, members, selectedMember, medicineToEdit, onClose, on
         {error && <p className="mt-4 rounded-lg bg-destructive-soft p-3 text-sm text-destructive">{error}</p>}
         
         <form onSubmit={save} className="mt-6 space-y-4">
-          {kind === "medicine" && (
+          {(kind === "medicine" || isReport) && (
             <label className="block text-sm font-semibold">For family member
               <select value={memberId} onChange={(e) => setMemberId(e.target.value)} className="field mt-2">
                 {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
+            </label>
+          )}
+
+          {isReport && (
+            <label className="block text-sm font-semibold">Report File
+              <input required type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setFile(e.target.files?.[0] || null)} className="field mt-2 py-2" />
             </label>
           )}
           
@@ -282,7 +307,7 @@ function CareDialog({ kind, members, selectedMember, medicineToEdit, onClose, on
             </label>
           )}
 
-          {kind !== "member" && (
+          {(kind === "medicine" || isEditing || isRefill) && (
             <div className="space-y-4">
               
               {!isEditing && (
