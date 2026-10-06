@@ -33,7 +33,7 @@ function doseTime(value?: string) { return value ? new Date(value).toLocaleTimeS
 function Dashboard() {
   const navigate = useNavigate();
   const [members, setMembers] = useState<FamilyMember[]>([]);
-  const [rhythm, setRhythm] = useState<number[]>([65, 80, 45, 90, 100, 30, 75]);
+  const [rhythm, setRhythm] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [dialog, setDialog] = useState<"member" | "medicine" | "edit-medicine" | "refill" | null>(null);
@@ -43,13 +43,14 @@ function Dashboard() {
   const load = useCallback(async () => {
     const userId = localStorage.getItem("userId");
     if (!userId) { await navigate({ to: "/" }); return; }
-    
-    setRhythm([65, 80, 45, 90, 100, 30, 75]);
 
     try {
       const response = await fetch(`${API}/user/${userId}/family`);
       if (!response.ok) throw new Error();
       setMembers(await response.json());
+      
+      const rhythmRes = await fetch(`${API}/user/${userId}/rhythm`);
+      if (rhythmRes.ok) setRhythm(await rhythmRes.json());
     } catch { 
       setMessage("We couldn't refresh your care list. Please try again."); 
     } finally { 
@@ -66,6 +67,28 @@ function Dashboard() {
   function openEdit(med: Medicine) { setSelectedMedicine(med); setDialog("edit-medicine"); }
   function openRefill(med: Medicine) { setSelectedMedicine(med); setDialog("refill"); }
   function logout() { localStorage.removeItem("userId"); void navigate({ to: "/" }); }
+
+  async function handleReportUpload(memberId: string | number, event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("report", file);
+
+    try {
+      const response = await fetch(`${API}/family/${memberId}/report`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error("Upload failed");
+      
+      setMessage(`Report uploaded successfully for ${file.name}`);
+      void load();
+    } catch {
+      setMessage("Failed to upload the report. Please try again.");
+    }
+  }
 
   if (loading) return <main className="app-shell grid min-h-screen place-items-center"><div className="text-center"><span className="mx-auto grid size-12 place-items-center rounded-xl bg-primary text-primary-foreground"><HeartPulse className="animate-pulse" /></span><p className="mt-4 text-sm font-semibold text-muted-foreground">Preparing today's care…</p></div></main>;
 
@@ -101,7 +124,28 @@ function Dashboard() {
         </section>
 
         <section id="family" className="mt-5 grid gap-5 lg:grid-cols-[1.25fr_.75fr]">
-          <div className="glass-panel p-5 sm:p-6"><div className="flex items-center justify-between gap-4"><div><h2 className="font-display text-lg font-bold">Family members</h2><p className="text-sm text-muted-foreground">Care at a glance</p></div><Button variant="secondary" onClick={() => setDialog("member")}><Plus size={17} /> Add member</Button></div><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{members.map((member) => <div key={member.id} className="rounded-lg bg-glass-strong p-4 ring-1 ring-glass-border"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-accent/25 text-sm font-bold text-accent-foreground">{initials(member.name)}</span><div className="min-w-0"><h3 className="truncate font-display text-sm font-semibold">{member.name}</h3><p className="text-xs text-muted-foreground">{member.medicines?.length || 0} medicines</p></div></div><Button variant="ghost" className="mt-3 w-full" onClick={() => openMedicine(member.id)}><Plus size={15} /> Add medicine</Button></div>)}</div></div>
+          <div className="glass-panel p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-4"><div><h2 className="font-display text-lg font-bold">Family members</h2><p className="text-sm text-muted-foreground">Care at a glance</p></div><Button variant="secondary" onClick={() => setDialog("member")}><Plus size={17} /> Add member</Button></div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {members.map((member) => (
+                <div key={member.id} className="rounded-lg bg-glass-strong p-4 ring-1 ring-glass-border">
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 place-items-center rounded-full bg-accent/25 text-sm font-bold text-accent-foreground">{initials(member.name)}</span>
+                    <div className="min-w-0"><h3 className="truncate font-display text-sm font-semibold">{member.name}</h3><p className="text-xs text-muted-foreground">{member.medicines?.length || 0} medicines</p></div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <Button variant="ghost" className="w-full text-xs" onClick={() => openMedicine(member.id)}>
+                      <Plus size={14} className="mr-1" /> Medicine
+                    </Button>
+                    <label className="flex w-full cursor-pointer items-center justify-center rounded-md text-xs font-medium hover:bg-accent hover:text-accent-foreground">
+                      <Plus size={14} className="mr-1" /> Report
+                      <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={(e) => handleReportUpload(member.id, e)} />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
           
           <div className="glass-panel p-5 sm:p-6">
             <h2 className="font-display text-lg font-bold">This week's rhythm</h2>
